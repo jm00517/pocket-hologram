@@ -16,7 +16,7 @@ Galaxy S21 Ultra의 전면 RGB 카메라로 관찰자의 눈 위치를 metric �
 - 빌드 없음: CDN importmap 이라 GitHub Pages 에서 바로 실행
 
 ## 캐릭터 (v0.4)
-- 기본 모델: 초음미쿠 v2 (あにまさ) PMD. 물리(ammo.js)로 머리카락/치마가 흔들림.
+- 기본 모델: 하츠네 미쿠 v2 (あにまさ) PMD. 물리(ammo.js)로 머리카락/치마가 흔들림.
 - idle = 4번 포즈 + 절차적 호흡·몸 흔들림·눈 깜빡임 + 사용자 눈 쪽으로 고개 돌리기.
 - 모션 드롭다운: wavefile 댄스, 포즈 1~8, 11. VMD/VPD 파일을 드롭하면 모션이 추가됨.
 - `window.character.play(name)` / `.morph(name, w)` 로 콘솔에서 제어 (LLM 연결 지점).
