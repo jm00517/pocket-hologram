@@ -1,22 +1,22 @@
 import * as THREE from 'three';
 
-export class OffAxisCamera {
-  constructor(camera,{screenWidth=0.068,screenHeight=0.151,near=0.01,far=50}={}){
-    this.camera=camera;this.screenWidth=screenWidth;this.screenHeight=screenHeight;this.near=near;this.far=far;
-  }
+/**
+ * Generalized perspective for a planar screen.
+ * Screen plane is z=0, centered at origin; +z points toward the viewer.
+ * Written independently from the standard off-axis frustum derivation.
+ */
+export class OffAxisCamera{
+  constructor(camera,{near=.01,far=50}={}){this.camera=camera;this.near=near;this.far=far;this.calibration=null}
+  setCalibration(c){this.calibration=c}
   update(eye){
-    const {x,y,z}=eye;
-    const n=this.near,f=this.far;
-    const d=Math.max(z,0.08);
-    const l=n*((-this.screenWidth/2)-x)/d;
-    const r=n*(( this.screenWidth/2)-x)/d;
-    const b=n*((-this.screenHeight/2)-y)/d;
-    const t=n*(( this.screenHeight/2)-y)/d;
-    this.camera.position.set(x,y,z);
+    const c=this.calibration;if(!c)return;
+    const n=this.near,f=this.far,d=Math.max(eye.z,.06);
+    const halfW=c.screenWidthM/2,halfH=c.screenHeightM/2;
+    const left=n*(-halfW-eye.x)/d,right=n*(halfW-eye.x)/d;
+    const bottom=n*(-halfH-eye.y)/d,top=n*(halfH-eye.y)/d;
+    this.camera.position.set(eye.x,eye.y,eye.z);
     this.camera.quaternion.identity();
-    const m=new THREE.Matrix4();
-    m.makePerspective(l,r,t,b,n,f);
-    this.camera.projectionMatrix.copy(m);
-    this.camera.projectionMatrixInverse.copy(m).invert();
+    this.camera.projectionMatrix.makePerspective(left,right,top,bottom,n,f);
+    this.camera.projectionMatrixInverse.copy(this.camera.projectionMatrix).invert();
   }
 }
