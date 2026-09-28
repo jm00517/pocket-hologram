@@ -18,14 +18,16 @@ export class ModelLoader{
     try{
       const res=await loader.loadAsync(urls.get(model.name.toLowerCase()));
       const obj=res.scene??res;
-      this.normalize(obj);
       return obj;
     } finally { setTimeout(()=>urls.forEach(u=>URL.revokeObjectURL(u)),5000); }
   }
   fromFile(file){return this.fromFiles([file])}
-  normalize(obj){
-    const box=new THREE.Box3().setFromObject(obj),size=box.getSize(new THREE.Vector3()),center=box.getCenter(new THREE.Vector3());
-    const s=1.2/Math.max(size.x,size.y,size.z,0.001);
-    obj.scale.multiplyScalar(s);obj.position.sub(center.multiplyScalar(s));obj.position.y-=0.25;obj.position.z=-1.6;
+  // Fit inside a w×h×d box behind the screen, standing on its floor, centered in depth.
+  static place(obj,w,h,d){
+    obj.scale.setScalar(1);obj.position.set(0,0,0);obj.updateMatrixWorld(true);
+    const box=new THREE.Box3().setFromObject(obj),size=box.getSize(new THREE.Vector3()),c=box.getCenter(new THREE.Vector3());
+    const s=Math.min(h*.8/Math.max(size.y,1e-6),w*.9/Math.max(size.x,1e-6),d*.9/Math.max(size.z,1e-6));
+    obj.scale.setScalar(s);
+    obj.position.set(-c.x*s,-h/2-box.min.y*s,-d/2-c.z*s);
   }
 }

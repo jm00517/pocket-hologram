@@ -10,16 +10,21 @@ const $=s=>document.querySelector(s),canvas=$('#scene'),video=$('#camera'),statu
 const calibration=new Calibration();
 const renderer=new THREE.WebGLRenderer({canvas,antialias:true});renderer.setPixelRatio(Math.min(devicePixelRatio,2));renderer.shadowMap.enabled=true;
 const scene=new THREE.Scene();scene.background=new THREE.Color(0x03050a);
-const camera=new THREE.PerspectiveCamera(45,1,.01,50),spatial=new OffAxisCamera(camera);spatial.setCalibration(calibration.data);
+const camera=new THREE.PerspectiveCamera(45,1,.01,50),spatial=new OffAxisCamera(camera);
 let eye={x:0,y:0,z:.42},rawEye={...eye};
 
 scene.add(new THREE.HemisphereLight(0xffffff,0x172033,2));
 const key=new THREE.DirectionalLight(0xffffff,3);key.position.set(1,2,1);scene.add(key);
-createTestChamber(scene);
-const cube=new THREE.Mesh(new THREE.BoxGeometry(.28,.28,.28),new THREE.MeshStandardMaterial({color:0x8aa8ff,roughness:.4}));cube.position.set(0,0,-.8);scene.add(cube);let current=cube;
+const DEPTH=.15;
+// Viewport = physical screen width; height follows the canvas aspect so the frustum matches what's drawn.
+// ponytail: ignores the URL bar shifting the viewport center; use Fullscreen for exact geometry.
+const dims=()=>{const w=calibration.data.screenWidthM;return{...calibration.data,screenHeightM:w*innerHeight/innerWidth}};
+let chamber;
+const cube=new THREE.Mesh(new THREE.BoxGeometry(.02,.02,.02),new THREE.MeshStandardMaterial({color:0x8aa8ff,roughness:.4}));cube.position.set(0,0,-DEPTH/2);scene.add(cube);let current=cube;
+function layout(){const d=dims();spatial.setCalibration(d);if(chamber)scene.remove(chamber);chamber=createTestChamber(scene,{width:d.screenWidthM,height:d.screenHeightM,depth:DEPTH});if(current!==cube)ModelLoader.place(current,d.screenWidthM,d.screenHeightM,DEPTH)}
 
 const loader=new ModelLoader();
-async function useFiles(files){if(!files?.length)return;status.textContent='loading model...';try{const obj=await loader.fromFiles(files);scene.remove(current);current=obj;scene.add(obj);status.textContent=`${files.length} file(s)`}catch(err){status.textContent=String(err.message||err)}}
+async function useFiles(files){if(!files?.length)return;status.textContent='loading model...';try{const obj=await loader.fromFiles(files);scene.remove(current);current=obj;layout();scene.add(obj);status.textContent=`${files.length} file(s)`}catch(err){status.textContent=String(err.message||err)}}
 $('#modelFile').addEventListener('change',e=>useFiles(e.target.files));
 const drop=$('#drop');
 addEventListener('dragover',e=>{e.preventDefault();drop.classList.remove('hidden')});
@@ -27,13 +32,13 @@ addEventListener('dragleave',()=>drop.classList.add('hidden'));
 addEventListener('drop',e=>{e.preventDefault();drop.classList.add('hidden');useFiles(e.dataTransfer.files)});
 
 const tracker=new FaceTracker(video,(p,r)=>{eye=p;rawEye=r},()=>calibration.data);
-$('#start').onclick=async()=>{try{status.textContent='initializing...';await tracker.init();await tracker.start();status.textContent='tracking'}catch(e){console.error(e);status.textContent='camera/tracker error'}};
+$('#start').onclick=async()=>{try{status.textContent='initializing...';await tracker.init();await tracker.start();status.textContent='tracking'}catch(e){console.error(e);status.textContent='error: '+(e.name||'')+' '+(e.message||e)}};
 $('#fullscreen').onclick=()=>{document.documentElement.requestFullscreen?.();screen.orientation?.lock?.('portrait').catch(()=>{})};
 $('#calibrate').onclick=()=>calPanel.classList.toggle('hidden');
 $('#debug').onclick=()=>debugPanel.classList.toggle('hidden');
-bindCalibrationPanel(calPanel,calibration,c=>spatial.setCalibration(c));
+bindCalibrationPanel(calPanel,calibration,layout);
 
-function resize(){renderer.setSize(innerWidth,innerHeight,false)}addEventListener('resize',resize);resize();
+function resize(){renderer.setSize(innerWidth,innerHeight,false);layout()}addEventListener('resize',resize);resize();
 function frame(){
   spatial.update(eye);
   debugPanel.textContent=`filtered eye (m)\nx ${eye.x.toFixed(3)}\ny ${eye.y.toFixed(3)}\nz ${eye.z.toFixed(3)}\n\nraw z ${rawEye.z.toFixed(3)}\nHFOV ${calibration.data.cameraHFovDeg.toFixed(1)}°`;
