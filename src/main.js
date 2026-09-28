@@ -6,9 +6,9 @@ import { ModelLoader } from './models/ModelLoader.js';
 import { Calibration, isMobile } from './calibration/Calibration.js';
 import { bindCalibrationPanel } from './ui/CalibrationPanel.js';
 import { createTestChamber } from './scene/TestChamber.js';
-import { Character, BUILTIN_MOTIONS, IDLE_POSE } from './character/Character.js';
+import { Character, BUILTIN_MOTIONS, IDLE_POSE, DEFAULT_MODEL } from './character/Character.js';
 
-const $=s=>document.querySelector(s),canvas=$('#scene'),video=$('#camera'),status=$('#status'),debugPanel=$('#debugPanel'),calPanel=$('#calibration'),motionSel=$('#motion');
+const $=s=>document.querySelector(s),canvas=$('#scene'),video=$('#camera'),status=$('#status'),debugPanel=$('#debugPanel'),calPanel=$('#calibration'),motionSel=$('#motion'),modelSel=$('#modelSel');
 const calibration=new Calibration();
 const renderer=new THREE.WebGLRenderer({canvas,antialias:true});renderer.setPixelRatio(Math.min(devicePixelRatio,2));renderer.shadowMap.enabled=true;
 const scene=new THREE.Scene();scene.background=new THREE.Color(0x03050a);
@@ -16,11 +16,11 @@ const camera=new THREE.PerspectiveCamera(45,1,.01,5000),spatial=new OffAxisCamer
 let eye={x:0,y:0,z:isMobile?.42:.6},rawEye={...eye};
 window.setEye=p=>{eye={...eye,...p}}; // debug: fake a viewer position (meters) without the camera
 
-// Same lighting as three.js's MMD example; MMD toon materials are tuned for it.
-scene.add(new THREE.AmbientLight(0xaaaaaa,3));
-const key=new THREE.DirectionalLight(0xffffff,3);key.position.set(-1,1,1);scene.add(key);
+// three.js MMD example lighting, a bit dimmer (3/3 blew out skin on Sour-style models).
+scene.add(new THREE.AmbientLight(0xaaaaaa,2));
+const key=new THREE.DirectionalLight(0xffffff,2.5);key.position.set(-1,1,1);scene.add(key);
 const outline=new OutlineEffect(renderer); // MMD's ink lines; most of the "MMD look"
-window.outline=true;
+window.outline=true;window.scene=scene; // debug
 
 // Scene units per meter. MMD physics breaks on scaled meshes, so instead of shrinking the model
 // we grow the screen/eye/room by K. Generic (glTF/FBX) models use K=1 and get scaled themselves.
@@ -108,7 +108,23 @@ $('#debug').onclick=()=>debugPanel.classList.toggle('hidden');
 bindCalibrationPanel(calPanel,calibration,layout);
 
 function resize(){renderer.setSize(innerWidth,innerHeight,false);layout()}addEventListener('resize',resize);addEventListener('fullscreenchange',resize);resize();
-loadCharacter(new URLSearchParams(location.search).get('model')||undefined).catch(e=>{console.error(e);status.textContent='error: '+(e.message||e)});
+// Local models live in assets/ (gitignored, MMD licenses forbid redistribution). The first one that exists
+// is the default; without assets/ (e.g. GitHub Pages) the three.js sample Miku is used.
+const MODELS=[
+  ['Sour Black','assets/sour/Sour式初音ミクVer.1.02/Black.pmx'],
+  ['Sour White','assets/sour/Sour式初音ミクVer.1.02/White.pmx'],
+  ['Classic',DEFAULT_MODEL],
+];
+(async()=>{
+  const ok=await Promise.all(MODELS.map(([,u])=>u===DEFAULT_MODEL||fetch(encodeURI(u),{method:'HEAD'}).then(r=>r.ok,()=>false)));
+  const avail=MODELS.filter((_,i)=>ok[i]);
+  const param=new URLSearchParams(location.search).get('model');
+  if(param&&!avail.some(([,u])=>u===param))avail.unshift([param.split('/').pop(),param]);
+  modelSel.innerHTML=avail.map(([n,u])=>`<option value="${u}">${n}</option>`).join('');
+  modelSel.value=param||avail[0][1];
+  modelSel.onchange=()=>loadCharacter(modelSel.value).catch(e=>{console.error(e);status.textContent='error: '+(e.message||e)});
+  modelSel.onchange();
+})();
 
 const clock=new THREE.Clock();
 function frame(){

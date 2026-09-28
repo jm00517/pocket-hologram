@@ -6,8 +6,9 @@ import { MMDAnimationHelper } from 'three/addons/animation/MMDAnimationHelper.js
 // Miku v2 (Animasa) + wavefile motion + KEITEL poses (non-commercial, modify/redistribute OK).
 // Poses 9/10 are lying down (need foot IK off) so they're left out.
 export const IDLE_POSE = 'stand';
-// Upright rest pose built in code (bone: [x, y, z] euler, radians). Arms come down from the model's T-pose.
-const STAND = { '左腕': [0, 0, -0.75], '右腕': [0, 0, 0.75], '左ひじ': [0, -0.25, 0], '右ひじ': [0, 0.25, 0] };
+// Upright rest pose built in code. Arms are lowered to ARM_DROP below horizontal, measured from each
+// model's own rest pose (T-pose vs A-pose differ), elbows slightly bent.
+const ARM_DROP = 1.2; // radians below horizontal (~70°); ponytail: one angle for all models, tune if hands clip the skirt
 const MMD = 'https://raw.githubusercontent.com/mrdoob/three.js/r170/examples/models/mmd/';
 export const DEFAULT_MODEL = MMD + 'miku/miku_v2.pmd';
 export const BUILTIN_MOTIONS = {
@@ -62,7 +63,17 @@ export class Character {
   }
 
   standClip() {
-    const tracks = Object.entries(STAND).filter(([n]) => this.bones[n]).map(([n, r]) => {
+    this.mesh.updateMatrixWorld(true);
+    const at = (n) => this.bones[n] && this.mesh.worldToLocal(this.bones[n].getWorldPosition(new THREE.Vector3()));
+    const pose = {};
+    for (const [arm, elbow, side] of [['左腕', '左ひじ', 1], ['右腕', '右ひじ', -1]]) {
+      const a = at(arm), b = at(elbow);
+      if (!a || !b) continue;
+      const restDrop = Math.atan2(a.y - b.y, Math.abs(b.x - a.x)); // how far the arm already hangs
+      pose[arm] = [0, 0, -side * (ARM_DROP - restDrop)];
+      pose[elbow] = [0, -side * 0.25, 0];
+    }
+    const tracks = Object.entries(pose).map(([n, r]) => {
       const qa = q.setFromEuler(e.set(...r)).toArray();
       return new THREE.QuaternionKeyframeTrack(`.bones[${n}].quaternion`, [0, 1], [...qa, ...qa]);
     });
