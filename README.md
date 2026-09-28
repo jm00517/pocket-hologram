@@ -1,38 +1,57 @@
-# Pocket Hologram
+# Pocket Hologram v0.2
 
-Galaxy S21 Ultra 같은 스마트폰의 전면 카메라로 관찰자의 얼굴/눈 위치를 추정하고, 화면을 고정된 창으로 간주한 **head-coupled off-axis perspective**를 렌더링하는 실험 프로젝트입니다.
+Galaxy S21 Ultra의 전면 RGB 카메라로 관찰자의 눈 위치를 metric 좌표로 추정하고, 스마트폰 화면을 실제 창으로 취급해 head-coupled off-axis perspective를 렌더링하는 실험입니다.
 
-## 목표
-- Android Chrome에서 실행
-- MediaPipe Face Landmarker 기반 head/eye tracking
-- Three.js off-axis projection
-- GLB/GLTF/FBX 파일 로컬 로드
-- 별도 서버/CI/CD/유료 서비스 없이 로컬 실행
+## v0.2
+- MediaPipe iris landmarks
+- 홍채의 실제 크기(기본 11.7 mm) + camera HFOV를 이용한 metric Z 추정
+- eye image position + focal length로 metric X/Y 추정
+- S21 Ultra 기본 screen/camera preset
+- camera-to-screen offset calibration
+- One Euro Filter 기반 저지연 smoothing
+- physical screen dimensions 기반 asymmetric off-axis frustum
+- depth 판단이 쉬운 test chamber
+- runtime calibration/debug panel
+- GLB/GLTF/FBX 로컬 파일 로드
+
+## 참고한 오픈소스 / prior art
+설계 아이디어와 표준 수학을 비교하기 위해 다음 프로젝트를 조사했습니다.
+
+- MindDock/off-axis-demo (MIT): MediaPipe iris tracking, simple asymmetric frustum, smoothing, GLTF workflow.
+- splatsdotcom/WindowMode (MIT): iris apparent diameter + webcam HFOV를 이용한 metric eye-distance estimation, worker-based tracking architecture.
+- V4C38/sensai-off-axis: physical screen calibration/debug UX와 head-coupled viewer 구조.
+
+Pocket Hologram의 구현 코드는 위 프로젝트 코드를 복사하지 않고 별도 모듈 구조로 작성했습니다. Off-axis projection은 planar-screen asymmetric frustum의 표준 기하에서 직접 구현합니다.
 
 ## 실행
-Node.js 20+ 권장.
-
 ```bash
 npm install
 npm run dev
 ```
 
-PC와 폰이 같은 Wi-Fi라면 Vite가 표시하는 LAN 주소로 접속할 수 있습니다. 단, 모바일 브라우저의 카메라 API는 보안 컨텍스트(HTTPS 또는 localhost)를 요구할 수 있습니다. 가장 간단한 첫 검증은 Android에서 로컬 HTTPS 개발환경/USB 디버깅 포트를 쓰는 것입니다.
+카메라 API는 secure context가 필요합니다. S21 Ultra를 USB로 연결한 경우 개발 PC에서 Vite를 실행한 뒤 ADB reverse를 쓰는 것이 무료이고 간단합니다.
 
-## 사용
-1. Start camera
-2. 카메라 권한 허용
-3. 얼굴을 좌우/상하/앞뒤로 움직여 큐브의 motion parallax 확인
-4. Model 버튼으로 .glb/.gltf/.fbx 선택
+```bash
+adb reverse tcp:5173 tcp:5173
+```
 
-모델은 브라우저 로컬 파일에서만 읽으며 업로드하지 않습니다.
+그 다음 폰 Chrome에서 `http://localhost:5173` 로 접속합니다.
 
-## 현재 한계
-- RGB 전면카메라 기반 Z 추정이라 절대 거리 정확도는 낮음
-- S21 Ultra 물리 화면 크기는 기본값으로 근사
-- landscape/portrait 및 카메라 FOV별 calibration 필요
-- FBX 외부 texture 경로는 단일 파일 drag-and-drop에서 깨질 수 있음
-- MMD PMX/PMD/VMD는 다음 단계
+## Calibration
+기본값은 Galaxy S21 Ultra 근사 preset입니다. Calibration 버튼에서 다음 값을 조절할 수 있습니다.
+
+- visible screen width / height
+- front camera X/Y offset from screen center
+- camera horizontal FOV
+
+특히 HFOV는 Z 거리 정확도에 직접 영향을 줍니다. 실제 기기/브라우저의 camera stream crop에 따라 보정이 필요합니다.
 
 ## 비용 원칙
 GitHub Actions, 유료 CI/CD, 유료 호스팅, 외부 유료 API를 사용하지 않습니다.
+
+## 다음 단계
+- 실제 S21 Ultra에서 HFOV 및 camera offset calibration
+- tracking을 Web Worker로 분리
+- orientation-aware portrait/landscape transform
+- MMD PMX/PMD/VMD loader
+- optional Gaussian Splat content backend
