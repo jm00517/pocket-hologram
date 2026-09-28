@@ -11,8 +11,7 @@ export class ModelLoader{
   async fromFiles(files){
     const list=[...files],model=list.find(f=>MODEL_EXT.test(f.name));
     if(!model)throw new Error('Unsupported model format (.glb .gltf .fbx .pmx .pmd)');
-    const urls=new Map(list.map(f=>[f.name.toLowerCase(),URL.createObjectURL(f)]));
-    const manager=new THREE.LoadingManager();manager.setURLModifier(u=>urls.get(base(u))??u);
+    const {urls,manager}=ModelLoader.fileManager(list);
     const ext=model.name.split('.').pop().toLowerCase();
     const loader=ext==='fbx'?new FBXLoader(manager):ext==='pmx'||ext==='pmd'?new MMDLoader(manager):new GLTFLoader(manager);
     try{
@@ -20,6 +19,12 @@ export class ModelLoader{
       const obj=res.scene??res;
       return obj;
     } finally { setTimeout(()=>urls.forEach(u=>URL.revokeObjectURL(u)),5000); }
+  }
+  // Object URLs for dropped files + a LoadingManager that resolves texture paths by basename.
+  static fileManager(files){
+    const urls=new Map([...files].map(f=>[f.name.toLowerCase(),URL.createObjectURL(f)]));
+    const manager=new THREE.LoadingManager();manager.setURLModifier(u=>urls.get(base(u))??u);
+    return{urls,manager,url:f=>urls.get(f.name.toLowerCase())};
   }
   fromFile(file){return this.fromFiles([file])}
   // Fit inside a w×h×d box behind the screen, standing on its floor, centered in depth.

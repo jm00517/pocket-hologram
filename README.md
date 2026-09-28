@@ -15,6 +15,19 @@ Galaxy S21 Ultra의 전면 RGB 카메라로 관찰자의 눈 위치를 metric �
 - GLB/GLTF/FBX/PMX/PMD 로컬 파일 로드 (파일 선택 또는 드래그&드롭, 텍스처·.bin 을 같이 놓으면 파일명으로 매핑)
 - 빌드 없음: CDN importmap 이라 GitHub Pages 에서 바로 실행
 
+## 캐릭터 (v0.4)
+- 기본 모델: 초음미쿠 v2 (あにまさ) PMD. 물리(ammo.js)로 머리카락/치마가 흔들림.
+- idle = 4번 포즈 + 절차적 호흡·몸 흔들림·눈 깜빡임 + 사용자 눈 쪽으로 고개 돌리기.
+- 모션 드롭다운: wavefile 댄스, 포즈 1~8, 11. VMD/VPD 파일을 드롭하면 모션이 추가됨.
+- `window.character.play(name)` / `.morph(name, w)` 로 콘솔에서 제어 (LLM 연결 지점).
+
+### 에셋 라이선스
+MMD 에셋은 이 레포에 포함하지 않고 three.js r170 원본 위치에서 런타임에 불러온다.
+- 모델/곡: Crypton 캐릭터 가이드라인 (piapro) 준수, 비상업.
+- 포즈 (KEITEL): 상업 NG, 개조·재배포 OK.
+- wavefile 모션: 원본 재배포 금지, 성인물 금지.
+상업적 사용이나 다른 캐릭터로 바꾸려면 해당 에셋의 readme를 따로 확인할 것.
+
 ## 참고한 오픈소스 / prior art
 설계 아이디어와 표준 수학을 비교하기 위해 다음 프로젝트를 조사했습니다.
 
