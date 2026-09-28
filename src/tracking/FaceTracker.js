@@ -6,7 +6,7 @@ export class FaceTracker{
   constructor(video,onEye,getCalibration){this.video=video;this.onEye=onEye;this.getCalibration=getCalibration;this.landmarker=null;this.running=false;this.last=-1;this.estimator=new EyePoseEstimator();this.filter=new PoseFilter();}
   async init(){
     if(this.landmarker)return;
-    const vision=await FilesetResolver.forVisionTasks('https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.22/wasm');
+    const vision=await FilesetResolver.forVisionTasks('https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.21/wasm');
     this.landmarker=await FaceLandmarker.createFromOptions(vision,{baseOptions:{modelAssetPath:'https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task',delegate:'GPU'},runningMode:'VIDEO',numFaces:1});
   }
   async start(){

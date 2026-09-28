@@ -1,5 +1,4 @@
 import * as THREE from 'three';
-import './style.css';
 import { FaceTracker } from './tracking/FaceTracker.js';
 import { OffAxisCamera } from './spatial/OffAxisCamera.js';
 import { ModelLoader } from './models/ModelLoader.js';
@@ -20,11 +19,16 @@ createTestChamber(scene);
 const cube=new THREE.Mesh(new THREE.BoxGeometry(.28,.28,.28),new THREE.MeshStandardMaterial({color:0x8aa8ff,roughness:.4}));cube.position.set(0,0,-.8);scene.add(cube);let current=cube;
 
 const loader=new ModelLoader();
-$('#modelFile').addEventListener('change',async e=>{const f=e.target.files[0];if(!f)return;status.textContent='loading model...';try{const obj=await loader.fromFile(f);scene.remove(current);current=obj;scene.add(obj);status.textContent=f.name}catch(err){status.textContent=String(err.message||err)}});
+async function useFiles(files){if(!files?.length)return;status.textContent='loading model...';try{const obj=await loader.fromFiles(files);scene.remove(current);current=obj;scene.add(obj);status.textContent=`${files.length} file(s)`}catch(err){status.textContent=String(err.message||err)}}
+$('#modelFile').addEventListener('change',e=>useFiles(e.target.files));
+const drop=$('#drop');
+addEventListener('dragover',e=>{e.preventDefault();drop.classList.remove('hidden')});
+addEventListener('dragleave',()=>drop.classList.add('hidden'));
+addEventListener('drop',e=>{e.preventDefault();drop.classList.add('hidden');useFiles(e.dataTransfer.files)});
 
 const tracker=new FaceTracker(video,(p,r)=>{eye=p;rawEye=r},()=>calibration.data);
 $('#start').onclick=async()=>{try{status.textContent='initializing...';await tracker.init();await tracker.start();status.textContent='tracking'}catch(e){console.error(e);status.textContent='camera/tracker error'}};
-$('#fullscreen').onclick=()=>document.documentElement.requestFullscreen?.();
+$('#fullscreen').onclick=()=>{document.documentElement.requestFullscreen?.();screen.orientation?.lock?.('portrait').catch(()=>{})};
 $('#calibrate').onclick=()=>calPanel.classList.toggle('hidden');
 $('#debug').onclick=()=>debugPanel.classList.toggle('hidden');
 bindCalibrationPanel(calPanel,calibration,c=>spatial.setCalibration(c));
