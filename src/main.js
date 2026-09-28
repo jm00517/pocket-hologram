@@ -13,6 +13,7 @@ const renderer=new THREE.WebGLRenderer({canvas,antialias:true});renderer.setPixe
 const scene=new THREE.Scene();scene.background=new THREE.Color(0x03050a);
 const camera=new THREE.PerspectiveCamera(45,1,.01,5000),spatial=new OffAxisCamera(camera,{far:5000});
 let eye={x:0,y:0,z:.42},rawEye={...eye};
+window.setEye=p=>{eye={...eye,...p}}; // debug: fake a viewer position (meters) without the camera
 
 scene.add(new THREE.HemisphereLight(0xffffff,0x172033,2));
 const key=new THREE.DirectionalLight(0xffffff,3);key.position.set(1,2,1);scene.add(key);

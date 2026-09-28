@@ -32,8 +32,10 @@ export class Character {
     this.actions = {};
     this.current = null;
     this.idle = true;        // procedural idle (breath, sway, blink) on top of the current clip
-    this.lookTarget = null;  // THREE.Vector3 in the mesh's parent space; head/eyes follow it
+    this.lookTarget = null;  // THREE.Vector3 in world space; head/eyes follow it
     this.t = 0;
+    this.look = { yaw: 0, pitch: 0 };
+    this.eyeGain = 1; // eye bone rotation multiplier; ponytail: tune per model if irises over/under-shoot
     this.nextBlink = 2;
     this.offsets = new Map(); // bone -> quaternion applied last frame (undone before the mixer runs)
   }
@@ -128,11 +130,18 @@ export class Character {
     if (this.lookTarget) {
       const head = this.mesh.worldToLocal(this.bones['頭'].getWorldPosition(v));
       const local = this.mesh.worldToLocal(this.lookTarget.clone()).sub(head);
-      // model faces +Z: yaw about +Y, pitch about -X; ponytail: fixed clamp + 40/60 neck/head split, no smoothing beyond the eye filter
-      const yaw = THREE.MathUtils.clamp(Math.atan2(local.x, local.z), -1, 1);
-      const pitch = THREE.MathUtils.clamp(-Math.atan2(local.y, Math.hypot(local.x, local.z)), -0.5, 0.5);
-      this.rotate('首', pitch * 0.4, yaw * 0.4, 0);
-      this.rotate('頭', pitch * 0.6, yaw * 0.6, 0);
+      // model faces +Z: yaw about +Y, pitch about -X (up = negative)
+      const yaw = THREE.MathUtils.clamp(Math.atan2(local.x, local.z), -1.2, 1.2);
+      const pitch = THREE.MathUtils.clamp(-Math.atan2(local.y, Math.hypot(local.x, local.z)), -0.6, 0.6);
+      // Eyes snap to you, head follows with a lag — reads as attention rather than a turret.
+      const k = 1 - Math.exp(-dt * 4);
+      this.look.yaw += (yaw - this.look.yaw) * k;
+      this.look.pitch += (pitch - this.look.pitch) * k;
+      const hy = this.look.yaw * 0.7, hp = this.look.pitch * 0.7; // head+neck cover 70%
+      this.rotate('首', hp * 0.4, hy * 0.4, 0);
+      this.rotate('頭', hp * 0.6, hy * 0.6, 0);
+      const c = THREE.MathUtils.clamp;
+      this.rotate('両目', c(pitch - hp, -0.25, 0.25) * this.eyeGain, c(yaw - hy, -0.4, 0.4) * this.eyeGain, 0);
     }
   }
 
