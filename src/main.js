@@ -25,7 +25,9 @@ window.outline=true;
 // Scene units per meter. MMD physics breaks on scaled meshes, so instead of shrinking the model
 // we grow the screen/eye/room by K. Generic (glTF/FBX) models use K=1 and get scaled themselves.
 let K=1;
-const DEPTH=.15,STAGE_Z=.025; // character stands 2.5 cm behind the glass
+// Room depth and where the character stands scale with the window, so a monitor gets a proportionally
+// deeper room and the feet land on visible floor instead of the bottom edge. Phone: ~15 cm deep, ~2.5 cm back.
+const roomDepth=v=>Math.max(.15,v.w*.5), standZ=v=>v.h*.2;
 // Meters per CSS px from the calibrated physical screen width. The viewport (not the whole screen)
 // is the window into the scene, so its size and its offset from the screen center both matter.
 const mPerPx=()=>calibration.data.screenWidthM/screen.width;
@@ -50,9 +52,10 @@ function layout(){
   if(charHeight)K=charHeight/(.8*viewport().h); // character fills 80% of the window height
   const d=dims();spatial.setCalibration(d);
   if(chamber)scene.remove(chamber);
-  chamber=createTestChamber(scene,{width:d.screenWidthM,height:d.screenHeightM,depth:DEPTH*K,step:.01*K});
-  stage.position.set(0,-d.screenHeightM/2,-STAGE_Z*K);
-  if(current)ModelLoader.place(current,d.screenWidthM,d.screenHeightM,DEPTH*K);
+  const v=viewport(),depth=roomDepth(v)*K;
+  chamber=createTestChamber(scene,{width:d.screenWidthM,height:d.screenHeightM,depth,step:Math.max(.01,v.w/12)*K});
+  stage.position.set(0,-d.screenHeightM/2,-standZ(v)*K);
+  if(current)ModelLoader.place(current,d.screenWidthM,d.screenHeightM,depth);
 }
 
 function clearModels(){blob.visible=false;if(current){scene.remove(current);current=null}if(character){stage.remove(character.mesh);character=null}}

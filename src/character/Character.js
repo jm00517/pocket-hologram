@@ -5,7 +5,9 @@ import { MMDAnimationHelper } from 'three/addons/animation/MMDAnimationHelper.js
 // Assets are NOT redistributed in this repo (MMD licenses forbid it); loaded at runtime from three.js r170.
 // Miku v2 (Animasa) + wavefile motion + KEITEL poses (non-commercial, modify/redistribute OK).
 // Poses 9/10 are lying down (need foot IK off) so they're left out.
-export const IDLE_POSE = 'pose4';
+export const IDLE_POSE = 'stand';
+// Upright rest pose built in code (bone: [x, y, z] euler, radians). Arms come down from the model's T-pose.
+const STAND = { '左腕': [0, 0, -0.75], '右腕': [0, 0, 0.75], '左ひじ': [0, -0.25, 0], '右ひじ': [0, 0.25, 0] };
 const MMD = 'https://raw.githubusercontent.com/mrdoob/three.js/r170/examples/models/mmd/';
 export const DEFAULT_MODEL = MMD + 'miku/miku_v2.pmd';
 export const BUILTIN_MOTIONS = {
@@ -48,7 +50,7 @@ export class Character {
     this.bones = Object.fromEntries(this.mesh.skeleton.bones.map((b) => [b.name, b]));
     this.morphs = this.mesh.morphTargetDictionary;
     this.rest = new Map(this.mesh.skeleton.bones.map((b) => [b, b.position.clone()]));
-    const base = await this.poseClip(BUILTIN_MOTIONS[IDLE_POSE], IDLE_POSE);
+    const base = this.standClip();
     this.helper.add(this.mesh, { animation: [base], physics: await physics });
     this.mixer = this.helper.objects.get(this.mesh).mixer;
     this.current = this.actions[IDLE_POSE] = this.mixer.clipAction(base);
@@ -57,6 +59,14 @@ export class Character {
     const update = this.mixer.update.bind(this.mixer);
     this.mixer.update = (dt) => { this.undo(); update(dt); this.procedural(dt); return this.mixer; };
     return this.mesh;
+  }
+
+  standClip() {
+    const tracks = Object.entries(STAND).filter(([n]) => this.bones[n]).map(([n, r]) => {
+      const qa = q.setFromEuler(e.set(...r)).toArray();
+      return new THREE.QuaternionKeyframeTrack(`.bones[${n}].quaternion`, [0, 1], [...qa, ...qa]);
+    });
+    return new THREE.AnimationClip(IDLE_POSE, 1, tracks);
   }
 
   // VPD pose → 2-key clip so it blends with VMD motions in the same mixer.
