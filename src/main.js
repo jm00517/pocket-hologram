@@ -56,6 +56,7 @@ function layout(){
   chamber=createTestChamber(scene,{width:d.screenWidthM,height:d.screenHeightM,depth,step:Math.max(.01,v.w/12)*K});
   stage.position.set(0,-d.screenHeightM/2,-standZ(v)*K);
   if(current)ModelLoader.place(current,d.screenWidthM,d.screenHeightM,depth);
+  character?.resetPhysics();
 }
 
 function clearModels(){blob.visible=false;if(current){scene.remove(current);current=null}if(character){stage.remove(character.mesh);character=null}}

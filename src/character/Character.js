@@ -155,5 +155,15 @@ export class Character {
     }
   }
 
+  // Call after moving the mesh (or its parents): otherwise dynamic bodies (skirt, hair) lag behind the
+  // teleport and get flung. Resets bodies to the current bone pose and settles them.
+  resetPhysics() {
+    const p = this.helper.objects.get(this.mesh)?.physics;
+    if (!p) return;
+    this.mesh.updateMatrixWorld(true);
+    p.reset();
+    p.warmup(60);
+  }
+
   update(dt) { if (this.mesh) this.helper.update(dt); }
 }
