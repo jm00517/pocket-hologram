@@ -1,5 +1,7 @@
-"""BVH (Bandai Namco Research motion dataset) -> FBX with Mixamo bone names, so scripts/fbx2vmd.sh
-can retarget it onto MMD models.
+"""BVH -> FBX with Mixamo bone names, so reze-rig (scripts/fbx2vmd.sh) can retarget it onto MMD models.
+Handles two skeletons, detected per file:
+  - Bandai Namco Research motion dataset (cm, UpperLeg_L...; needs the computed T-pose bind)
+  - SMPL / HumanML3D output, e.g. MoMask (m, LeftUpLeg...; rest is already a T-pose)
 
 Run:  blender --background --factory-startup --python scripts/bvh2fbx.py -- <in_dir> <out_dir>
 """
@@ -17,6 +19,17 @@ RENAME = {
     'UpperLeg_R': 'RightUpLeg', 'LowerLeg_R': 'RightLeg', 'Foot_R': 'RightFoot', 'Toes_R': 'RightToeBase',
 }
 
+RENAME_SMPL = {n: n for n in ['Hips', 'Spine', 'Spine1', 'Spine2', 'Neck', 'Head']}
+for side in ('Left', 'Right'):
+    RENAME_SMPL.update({side + n: side + n for n in ['Shoulder', 'Arm', 'ForeArm', 'Hand', 'UpLeg', 'Leg', 'Foot']})
+    RENAME_SMPL[side + 'Toe'] = side + 'ToeBase'
+
+
+def is_bandai(path):
+    with open(path, encoding='utf-8', errors='ignore') as f:
+        return 'UpperLeg_L' in f.read(4000)
+
+
 UP_CHAIN = ['Hips', 'Spine', 'Chest', 'Neck', 'Head']
 ARM = ['Shoulder_{s}', 'UpperArm_{s}', 'LowerArm_{s}', 'Hand_{s}']
 LEG = ['UpperLeg_{s}', 'LowerLeg_{s}']
@@ -24,24 +37,32 @@ FOOT = ['Foot_{s}', 'Toes_{s}']
 
 
 def load(path):
+    bandai = is_bandai(path)
     bpy.ops.wm.read_factory_settings(use_empty=True)
-    bpy.ops.import_anim.bvh(filepath=path, global_scale=0.01, update_scene_fps=True, update_scene_duration=True)
+    bpy.ops.import_anim.bvh(filepath=path, global_scale=0.01 if bandai else 1.0, update_scene_fps=True,
+                            update_scene_duration=True)
     arm = next(o for o in bpy.context.scene.objects if o.type == 'ARMATURE')
     arm.name = 'Armature'
     arm.select_set(True)
     bpy.context.view_layer.objects.active = arm
-    normalize(arm)
+    # update_scene_duration doesn't take in Blender 5 background mode: without this every clip is
+    # exported at the default 250 frames with a frozen tail
+    sc = bpy.context.scene
+    fs, fe = arm.animation_data.action.frame_range
+    sc.frame_start, sc.frame_end = int(fs), int(fe)
+    arm['rename'] = 'bandai' if bandai else 'smpl'
+    normalize(arm, *(('UpperLeg_L', 'UpperLeg_R') if bandai else ('LeftUpLeg', 'RightUpLeg')))
     return arm
 
 
-def normalize(arm):
+def normalize(arm, leg_l, leg_r):
     """Each take was captured at a different spot on the stage, facing a different way (bow is turned
     ~28°). The retargeter reads that as hip/foot offsets from the bind (feet crossed, hips shoved
     sideways), so re-root every frame so frame 1 has the hips over the origin, facing -Y."""
     sc, pb = bpy.context.scene, arm.pose.bones
     sc.frame_set(sc.frame_start)
     W = lambda n: pb[n].head.copy()  # armature space (object has identity transform)
-    left = W('UpperLeg_L') - W('UpperLeg_R')
+    left = W(leg_l) - W(leg_r)
     left.z = 0
     left.normalize()
     fwd = left.cross(Vector((0, 0, 1)))
@@ -64,9 +85,10 @@ def normalize(arm):
 
 
 def rename_and_export(arm, out):
+    table = RENAME if arm.get('rename') == 'bandai' else RENAME_SMPL
     for b in arm.data.bones:
-        if b.name in RENAME:
-            b.name = 'mixamorig:' + RENAME[b.name]  # also renames the action's fcurve paths
+        if b.name in table:
+            b.name = 'mixamorig:' + table[b.name]  # also renames the action's fcurve paths
     bpy.ops.export_scene.fbx(filepath=out, use_selection=True, object_types={'ARMATURE'}, add_leaf_bones=False,
                              bake_anim=True, bake_anim_use_nla_strips=False, bake_anim_use_all_actions=False)
     print('wrote', out)
@@ -117,5 +139,7 @@ os.makedirs(dst, exist_ok=True)
 bvhs = sorted(n for n in os.listdir(src) if n.lower().endswith('.bvh'))
 for name in bvhs:
     rename_and_export(load(os.path.join(src, name)), os.path.join(dst, os.path.splitext(name)[0] + '.fbx'))
-neutral = next((n for n in bvhs if 'respond_normal' in n), bvhs[0])
-write_tpose(os.path.join(src, neutral), os.path.join(os.path.dirname(dst.rstrip('/\\')) or '.', 'tpose.fbx'))
+bandai = [n for n in bvhs if is_bandai(os.path.join(src, n))]
+if bandai:  # only the Bandai skeleton needs a synthetic bind pose
+    neutral = next((n for n in bandai if 'respond_normal' in n), bandai[0])
+    write_tpose(os.path.join(src, neutral), os.path.join(os.path.dirname(dst.rstrip('/\\')) or '.', 'tpose.fbx'))

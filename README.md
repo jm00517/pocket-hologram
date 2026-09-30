@@ -33,6 +33,9 @@ MMD 에셋은 이 레포에 포함하지 않고 three.js r170 원본 위치에�
 - Mixamo FBX → `assets/motions/`에 넣고 `bash scripts/fbx2vmd.sh` (reze-rig, MIT).
 - 반다이남코 리서치 모션 데이터셋 → `bash scripts/get-bandai.sh` (Blender 필요).
   BVH의 0-회전 자세가 사람 자세가 아니라서 `scripts/bvh2fbx.py`가 T자 기준 자세를 계산해 바인드로 쓴다.
+- 텍스트로 모션 생성: `bash scripts/gen-motions.sh` — MoMask(MIT, HumanML3D 학습 → 비상업)로
+  `scripts/motion_prompts.txt`의 문장마다 3개씩 만들어 `assets/motions/gen/vmd`로 변환. 첫 실행 때 설치까지 한다.
+  (HY-Motion은 라이선스가 한국을 제외해서 쓰지 않는다.)
 - 모션 파일은 `assets/`(gitignore)에만 둔다.
 
 ### 모션 출처
