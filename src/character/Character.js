@@ -157,7 +157,11 @@ export class Character {
       next.clampWhenFinished = once;
     };
     if (inertial && this.inertia) {
-      this.pendingSwitch = () => { for (const a of Object.values(this.actions)) if (a !== next) a.stop(); start(); };
+      this.pendingSwitch = () => {
+        for (const a of Object.values(this.actions)) if (a !== next) a.stop();
+        this.toRest(next.getClip()); // bones the new clip doesn't drive would otherwise freeze where the old one left them
+        start();
+      };
     } else {
       start();
       if (prev) prev.crossFadeTo(next, fade, false);
@@ -250,6 +254,33 @@ export class Character {
 
   // Call after moving the mesh (or its parents): otherwise dynamic bodies (skirt, hair) lag behind the
   // teleport and get flung. Resets bodies to the current bone pose and settles them.
+  // Rest pose for every bone the clip doesn't animate (all bones when clip is omitted). Physics bones
+  // are rewritten by the solver right after, so resetting them is harmless.
+  toRest(clip) {
+    const driven = new Set(clip?.tracks.map((t) => t.name.slice(t.name.indexOf('[') + 1, t.name.indexOf(']'))) ?? []);
+    for (const b of this.mesh.skeleton.bones) {
+      if (driven.has(b.name)) continue;
+      b.position.copy(this.rest.get(b));
+      b.quaternion.identity();
+    }
+  }
+
+  // Hard reset: back to the stand pose now, no blending, inertia and physics cleared.
+  reset() {
+    this.director.gesture = null;
+    this.behavior.reactions = [];
+    this.behavior.stopSpeaking();
+    this.pendingSwitch = () => {
+      for (const a of Object.values(this.actions)) a.stop();
+      this.toRest();
+      this.actions[IDLE_POSE].reset().setEffectiveWeight(1).setLoop(THREE.LoopRepeat, Infinity).play();
+      this.current = this.actions[IDLE_POSE];
+      for (const arr of [this.inertia.rx, this.inertia.rv, this.inertia.px, this.inertia.pv]) arr.forEach((v) => v.set(0, 0, 0));
+      this.inertia.before = null;
+      this.needsPhysicsReset = true;
+    };
+  }
+
   resetPhysics() {
     const p = this.helper.objects.get(this.mesh)?.physics;
     if (!p) return;
@@ -262,5 +293,6 @@ export class Character {
     if (!this.mesh) return;
     this.director.tick(dt);
     this.helper.update(dt);
+    if (this.needsPhysicsReset) { this.needsPhysicsReset = false; this.resetPhysics(); }
   }
 }

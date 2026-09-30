@@ -70,12 +70,46 @@ async function loadCharacter(url,manager){
   charHeight=h;
   stage.add(mesh);blob.scale.set(h*.45,h*.3,1);blob.visible=true;layout();
   motionSel.innerHTML=['idle',...Object.keys(BUILTIN_MOTIONS).filter(n=>n!==IDLE_POSE)].map(n=>`<option>${n}</option>`).join('');
+  // Generated clips (scripts/gen-motions.sh writes the index); loaded lazily on selection.
+  fetch('assets/motions/gen/vmd/index.json').then(r=>r.ok?r.json():[]).then(names=>{
+    if(!names.length)return;
+    const g=document.createElement('optgroup');g.label='generated';
+    for(const n of names)g.append(new Option(n,'gen:'+n));
+    motionSel.append(g);
+  }).catch(()=>{});
   motionSel.classList.remove('hidden');
   status.textContent='ready';
 }
+// Text -> motion from the page (needs scripts/server.py; the plain static server has no /api)
+const genBox=document.createElement('form');genBox.id='gen';
+genBox.innerHTML='<input placeholder="motion prompt (English), e.g. a person waves hello shyly" maxlength="200"><select><option>2</option><option selected>3</option><option>4</option><option>6</option><option>9</option></select><span>s</span><button>생성</button>';
+document.getElementById('hud').after(genBox);
+const resetBtn=document.createElement('button');resetBtn.textContent='Reset pose';resetBtn.type='button';
+resetBtn.onclick=()=>{if(!character)return;character.reset();character.idle=true;character.director.enabled=true;motionSel.value='idle';status.textContent='reset'};
+motionSel.after(resetBtn);
+genBox.onsubmit=async(e)=>{
+  e.preventDefault();
+  const [inp,sec]=genBox.querySelectorAll('input,select'),btn=genBox.querySelector('button'),prompt=inp.value.trim();
+  if(!prompt||!character)return;
+  btn.disabled=true;const t0=performance.now();
+  const tick=setInterval(()=>status.textContent=`generating… ${((performance.now()-t0)/1000)|0}s`,500);
+  try{
+    const r=await fetch('api/generate',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({prompt,seconds:+sec.value,variants:2})});
+    const j=await r.json().catch(()=>({error:`HTTP ${r.status} (run python scripts/server.py)`}));
+    if(!r.ok||j.error)throw new Error(j.error||r.status);
+    let g=motionSel.querySelector('optgroup');
+    if(!g){g=document.createElement('optgroup');g.label='generated';motionSel.append(g)}
+    for(const n of j.names)if(![...g.children].some(o=>o.value==='gen:'+n))g.append(new Option(n,'gen:'+n));
+    clearInterval(tick);motionSel.value='gen:'+j.names[0];await motionSel.onchange();
+  }catch(err){clearInterval(tick);status.textContent='generate failed: '+(err.message||err)}
+  finally{btn.disabled=false}
+};
 motionSel.onchange=async()=>{
   const n=motionSel.value;status.textContent=`loading ${n}...`;
-  try{character.idle=n==='idle'||n.startsWith('pose');character.director.enabled=n==='idle';if(n==='idle')character.director.toBase();else await character.play(n);status.textContent=n}
+  try{
+    character.idle=n==='idle'||n.startsWith('pose')||n.startsWith('gen:');character.director.enabled=n==='idle';
+    if(n.startsWith('gen:')&&!character.actions[n])await character.addMotion(n,'assets/motions/gen/vmd/'+encodeURIComponent(n.slice(4))+'.vmd');
+    if(n==='idle')character.director.toBase();else await character.play(n);status.textContent=n}
   catch(e){status.textContent='error: '+(e.message||e)}
 };
 

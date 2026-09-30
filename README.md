@@ -57,14 +57,15 @@ Pocket Hologram의 구현 코드는 위 프로젝트 코드를 복사하지 않�
 폰에서 바로: https://jm00517.github.io/pocket-hologram/
 (repo Settings → Pages → Source: Deploy from a branch, `main` / `/ (root)` 한 번만 켜면 됨. Actions 불필요.)
 
-로컬 개발은 정적 서버면 뭐든 됩니다. 카메라 API는 secure context(HTTPS 또는 localhost)가 필요하므로 USB 연결 시 ADB reverse 를 씁니다.
+로컬 개발 서버 (정적 파일 + 웹에서 텍스트→모션 생성 API):
 
 ```bash
-npx serve .            # http://localhost:3000
-adb reverse tcp:3000 tcp:3000
+python scripts/server.py          # http://localhost:3210
 ```
 
-그 다음 폰 Chrome에서 `http://localhost:3000` 로 접속합니다.
+화면 위쪽 입력창에 영어 문장을 넣고 "생성"을 누르면 MoMask → Blender → VMD 변환 후 바로 재생된다(약 45초).
+생성 기능 없이 보기만 할 거면 정적 서버(`npx serve -l 3210 .`)도 된다.
+카메라 API는 secure context(HTTPS 또는 localhost)가 필요하므로 폰은 USB 연결 후 `adb reverse tcp:3210 tcp:3210`.
 
 ## Calibration
 기본값은 Galaxy S21 Ultra 근사 preset입니다. Calibration 버튼에서 다음 값을 조절할 수 있습니다.

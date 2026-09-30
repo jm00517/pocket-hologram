@@ -39,3 +39,5 @@ for i in "${!LINES[@]}"; do
 done
 "$BLENDER" --background --factory-startup --python scripts/bvh2fbx.py -- "$OUT/bvh" "$OUT/fbx" | grep -c wrote
 node .tools/fbx2vmd.mjs "$OUT/fbx" --out "$OUT/vmd" --no-bind-ref --target-pmx "$PMX" | tail -1
+# index for the web motion menu (a static server can't list directories)
+(cd "$OUT/vmd" && ls *.vmd | sed 's/\.vmd$//' | python -c "import sys,json;print(json.dumps([l.strip() for l in sys.stdin if l.strip()]))" > index.json)
