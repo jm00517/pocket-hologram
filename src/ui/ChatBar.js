@@ -3,6 +3,7 @@
 // typed text echoed back; swap `reply()` for the LLM call later.
 import { toVowels, EXPRESSIONS, REACTIONS as BODY } from '../character/Behavior.js';
 import { LIBRARY } from '../character/Motions.js';
+import { HAND_MODES } from '../character/Hands.js';
 
 const MOTIONS = [...new Set([...BODY, ...Object.keys(LIBRARY.reactions)])];
 const FACES = ['neutral', ...Object.keys(EXPRESSIONS)];
@@ -24,6 +25,7 @@ export function mountChatBar(getBehavior) {
   bar.innerHTML = `
     <div class="row"><b>표정</b>${FACES.map((f) => `<button data-f="${f}">${f}</button>`).join('')}
       <label><input type="checkbox" data-hold> 유지</label></div>
+    <div class="row"><b>손</b>${HAND_MODES.map((h) => `<button data-h="${h}">${h}</button>`).join('')}</div>
     <div class="row"><b>모션</b>${MOTIONS.map((r) => `<button data-r="${r}">${r}</button>`).join('')}
       <select data-s>${STATES.map((s) => `<option>${s}</option>`).join('')}</select>
       <label><input type="checkbox" data-inertia checked> 관성 블렌딩</label></div>
@@ -33,6 +35,7 @@ export function mountChatBar(getBehavior) {
   const b = () => getBehavior();
 
   bar.querySelectorAll('[data-r]').forEach((el) => (el.onclick = () => b()?.react(el.dataset.r)));
+  bar.querySelectorAll('[data-h]').forEach((el) => (el.onclick = () => b()?.c.hands.set(el.dataset.h)));
   const hold = bar.querySelector('[data-hold]');
   bar.querySelectorAll('[data-f]').forEach((el) => (el.onclick = () => b()?.express(el.dataset.f, { hold: hold.checked })));
   stateSel.onchange = () => b()?.setState(stateSel.value);

@@ -4,6 +4,7 @@ import { MMDAnimationHelper } from 'three/addons/animation/MMDAnimationHelper.js
 import { Behavior } from './Behavior.js';
 import { MotionDirector } from './Motions.js';
 import { Inertializer } from './Inertia.js';
+import { Hands } from './Hands.js';
 
 // Assets are NOT redistributed in this repo (MMD licenses forbid it); loaded at runtime from three.js r170.
 // Miku v2 (Animasa) + wavefile motion + KEITEL poses (non-commercial, modify/redistribute OK).
@@ -59,6 +60,7 @@ export class Character {
     this.morphs = this.mesh.morphTargetDictionary;
     this.rest = new Map(this.mesh.skeleton.bones.map((b) => [b, b.position.clone()]));
     this.behavior = new Behavior(this); // conversation states, reactions, lip sync
+    this.hands = new Hands(this);       // finger poses + micro-motion
     const base = this.standClip();
     this.helper.add(this.mesh, { animation: [base], physics: await physics });
     this.mixer = this.helper.objects.get(this.mesh).mixer;
@@ -204,13 +206,7 @@ export class Character {
   procedural(dt) {
     this.t += dt;
     const t = this.t;
-    // Relaxed hands: MMD rest fingers are ramrod straight. Curl about Z (left −, right +), always on
-    // because the mocap clips carry no finger tracks.
-    for (const [side, sg] of [['左', -1], ['右', 1]]) {
-      for (const [f, c] of [['人指', 0.2], ['中指', 0.3], ['薬指', 0.38], ['小指', 0.45]])
-        for (const j of ['１', '２', '３']) this.rotate(side + f + j, 0, 0, sg * c);
-      this.rotate(side + '親指２', 0, sg * 0.15, 0);
-    }
+    this.hands.apply(dt);
     if (this.idle) {
       // Layered idle: breathing, slow weight shift over planted feet, head/arm drift. Sums of sines at
       // unrelated frequencies so it never visibly loops. Damped while a gesture clip plays.
