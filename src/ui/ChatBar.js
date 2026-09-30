@@ -1,9 +1,11 @@
 // Test harness for conversational animation until an LLM is wired in:
 // typing → listening, send → thinking → speaking (browser TTS + text lip sync). The reply is the
 // typed text echoed back; swap `reply()` for the LLM call later.
-import { toVowels } from '../character/Behavior.js';
+import { toVowels, EXPRESSIONS, REACTIONS as BODY } from '../character/Behavior.js';
+import { LIBRARY } from '../character/Motions.js';
 
-const REACTIONS = ['nod', 'shake', 'tilt', 'happy', 'surprised', 'shy', 'wave', 'wave2', 'bow', 'shybow', 'hi', 'byebye', 'raise', 'call'];
+const MOTIONS = [...new Set([...BODY, ...Object.keys(LIBRARY.reactions)])];
+const FACES = ['neutral', ...Object.keys(EXPRESSIONS)];
 const STATES = ['idle', 'listening', 'thinking', 'speaking'];
 
 const langOf = (s) => (/[가-힣]/.test(s) ? 'ko' : /[぀-ヿ]/.test(s) ? 'ja' : 'en');
@@ -20,7 +22,9 @@ export function mountChatBar(getBehavior) {
   const bar = document.createElement('div');
   bar.id = 'chat';
   bar.innerHTML = `
-    <div class="row">${REACTIONS.map((r) => `<button data-r="${r}">${r}</button>`).join('')}
+    <div class="row"><b>표정</b>${FACES.map((f) => `<button data-f="${f}">${f}</button>`).join('')}
+      <label><input type="checkbox" data-hold> 유지</label></div>
+    <div class="row"><b>모션</b>${MOTIONS.map((r) => `<button data-r="${r}">${r}</button>`).join('')}
       <select data-s>${STATES.map((s) => `<option>${s}</option>`).join('')}</select>
       <label><input type="checkbox" data-inertia checked> 관성 블렌딩</label></div>
     <form class="row"><input placeholder="말 걸기 (지금은 따라 말함)" autocomplete="off"><button>보내기</button></form>`;
@@ -29,6 +33,8 @@ export function mountChatBar(getBehavior) {
   const b = () => getBehavior();
 
   bar.querySelectorAll('[data-r]').forEach((el) => (el.onclick = () => b()?.react(el.dataset.r)));
+  const hold = bar.querySelector('[data-hold]');
+  bar.querySelectorAll('[data-f]').forEach((el) => (el.onclick = () => b()?.express(el.dataset.f, { hold: hold.checked })));
   stateSel.onchange = () => b()?.setState(stateSel.value);
   bar.querySelector('[data-inertia]').onchange = (e) => { if (b()) b().c.inertialBlend = e.target.checked; };
   input.oninput = () => { if (input.value && b()?.state === 'idle') b().setState('listening'); };

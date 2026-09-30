@@ -30,6 +30,23 @@ export function toVowels(text) {
   return out;
 }
 
+// Facial expressions: face morphs only, no body. Each entry lists [morph, weight] alternatives in
+// priority order per slot, so models missing a morph fall back (Sour has 照れ, Classic only はぅ).
+export const EXPRESSIONS = {
+  smile: [[['にこり', 0.8]], [['口角上げ', 0.5]]],
+  happy: [[['笑い', 1]], [['にこり', 0.6]]],
+  surprised: [[['びっくり', 1]], [['瞳小', 0.6]], [['お', 0.5]]],
+  shy: [[['照れ', 1], ['はぅ', 0.5]], [['困る', 0.5]]],
+  sad: [[['悲しい', 1], ['困る', 0.8]], [['口角下げ', 0.5]]],
+  angry: [[['怒り', 1]], [['真面目', 0.4]]],
+  pout: [[['じと目', 0.8]], [['ω', 0.6]]],
+  wink: [[['ウィンク', 1], ['ウィンク２', 1]], [['にこり', 0.5]]],
+  heart: [[['はぁと', 1]], [['にこり', 0.6]]],
+  sparkle: [[['星目', 1], ['瞳大', 0.8]], [['にこり', 0.6]]],
+};
+const EXPR_MORPHS = [...new Set(Object.values(EXPRESSIONS).flat(2).map(([m]) => m))];
+export const REACTIONS = ['nod', 'shake', 'tilt', 'bounce', 'recoil', 'lookdown', 'wave'];
+
 export class Behavior {
   constructor(character) {
     this.c = character;
@@ -44,7 +61,13 @@ export class Behavior {
 
   setState(s) { if (STATES.includes(s)) this.state = s; }
 
-  react(name, len = { nod: 0.7, shake: 0.9, tilt: 1.6, happy: 1.8, surprised: 1.2, shy: 2.2, wave: 2.0 }[name] ?? 1) {
+  // Face only. hold = keep until another expression (or 'neutral'); else fades after len seconds.
+  express(name, { len = 2.5, hold = false } = {}) {
+    this.expr = name === 'neutral' || !EXPRESSIONS[name] ? null : { name, t: 0, len, hold };
+  }
+
+  // Body only (procedural or a mocap clip when one is loaded).
+  react(name, len = { nod: 0.7, shake: 0.9, tilt: 1.6, bounce: 1.8, recoil: 1.2, lookdown: 2.2, wave: 2.0 }[name] ?? 1) {
     // prefer a mocap clip when one is loaded (nod/shake map onto Mixamo's nod / head-shake)
     const clip = LIBRARY.reactions[{ nod: 'nod', shake: 'no' }[name] ?? name];
     if (clip && this.c.director?.play(clip)) return;
@@ -110,11 +133,9 @@ export class Behavior {
     this.morph('う', m.u);
     if (hasE) this.morph('え', m.e);
     this.morph('お', m.o);
-    this.morph('にこり', 0.3 * S); // pleasant brows while talking
     c.rotate('頭', nod * S, 0, 0);
 
-    // one-shot reactions
-    let happy = 0, surprised = 0, shy = 0;
+    // one-shot body reactions (no face)
     for (const r of this.reactions) {
       r.t += dt;
       const a = env(r.t, r.len), p = r.t / r.len;
@@ -122,9 +143,9 @@ export class Behavior {
         case 'nod': c.rotate('頭', Math.sin(p * Math.PI * 2) ** 2 * 0.22 * a, 0, 0); break;
         case 'shake': c.rotate('頭', 0, Math.sin(p * Math.PI * 4) * 0.25 * a, 0); break;
         case 'tilt': c.rotate('頭', 0, 0, 0.25 * a); break;
-        case 'happy': happy = a; c.rotate('上半身', 0, 0, Math.sin(r.t * 9) * 0.03 * a); break;
-        case 'surprised': surprised = a; c.rotate('上半身', -0.12 * a, 0, 0); c.rotate('頭', -0.12 * a, 0, 0); break;
-        case 'shy': shy = a; c.rotate('頭', 0.25 * a, 0, 0.1 * a); c.rotate('両目', 0.2 * a, 0, 0); break;
+        case 'bounce': c.rotate('上半身', 0, 0, Math.sin(r.t * 9) * 0.03 * a); break;
+        case 'recoil': c.rotate('上半身', -0.12 * a, 0, 0); c.rotate('頭', -0.12 * a, 0, 0); break;
+        case 'lookdown': c.rotate('頭', 0.25 * a, 0, 0.1 * a); c.rotate('両目', 0.2 * a, 0, 0); break;
         case 'wave': {
           // upper arm out to the side, forearm up, waving from the elbow
           c.rotate('右腕', 0, 0, -1.25 * a);
@@ -134,11 +155,22 @@ export class Behavior {
       }
     }
     this.reactions = this.reactions.filter((r) => r.t < r.len);
-    this.morph('笑い', happy);
-    this.morph('びっくり', surprised);
-    this.morph('瞳小', surprised * 0.6);
-    if (surprised) this.morph('お', Math.max(m.o, surprised * 0.5));
-    this.morph('照れ', shy) || this.morph('はぅ', shy * 0.5);
-    this.morph('困る', 0.35 * T + 0.5 * shy);
+
+    // facial expression (face only); thinking adds a slight frown on top
+    const w = Object.fromEntries(EXPR_MORPHS.map((n) => [n, 0]));
+    if (this.expr) {
+      const x = this.expr;
+      x.t += dt;
+      const a = x.hold ? Math.min(1, x.t / 0.15) : env(x.t, x.len);
+      for (const slot of EXPRESSIONS[x.name]) {
+        const hit = slot.find(([n]) => c.morphs[n] !== undefined);
+        if (hit) w[hit[0]] = hit[1] * a;
+      }
+      if (!x.hold && x.t >= x.len) this.expr = null;
+    }
+    w['困る'] = Math.max(w['困る'] ?? 0, 0.35 * T);
+    w['にこり'] = Math.max(w['にこり'] ?? 0, 0.3 * S); // pleasant brows while talking
+    if (w['お']) w['お'] = Math.max(w['お'], m.o); else delete w['お']; // the lip sync owns the mouth
+    for (const [n, v] of Object.entries(w)) this.morph(n, v);
   }
 }
