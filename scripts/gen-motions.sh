@@ -21,8 +21,8 @@ if [ ! -d "$M/checkpoints/t2m/length_estimator" ]; then
   # patches: numpy.core.umath_tests / np.float removed; matplotlib 3.8 breaks the mp4 preview
   sed -i 's/^import numpy.core.umath_tests as ut$/ut = None/; s/ut\.matrix_multiply(/np.matmul(/g' "$M"/visualization/*.py
   sed -i 's/            import numpy.core.umath_tests as ut/            pass/' "$M/visualization/Quaternions.py"
-  grep -rl 'np\.float' --include=*.py "$M" | grep -v venv | xargs -r sed -i -E 's/np\.float([^0-9_])/np.float64/g'
-  sed -i -E 's/^(\s*)(plot_3d_motion\()/pass  # /' "$M/gen_t2m.py"
+  grep -rl 'np\.float\b' --include=*.py "$M" | grep -v venv | xargs -r sed -i -E 's/np\.float\b([^0-9_])/np.float64\1/g'
+  sed -i -E 's/^(\s*)(plot_3d_motion\()/\1pass  # \2/' "$M/gen_t2m.py"
 fi
 mapfile -t LINES < <(grep -v '^#' scripts/motion_prompts.txt | grep '|')
 : > "$M/prompts.txt"
