@@ -42,6 +42,9 @@ MMD 에셋은 이 레포에 포함하지 않고 three.js r170 원본 위치에�
 - Bandai Namco Research Motion Dataset — © Bandai Namco Research Inc., CC BY-NC 4.0 (비상업).
   https://github.com/BandaiNamcoResearchInc/Bandai-Namco-Research-Motiondataset
 - Mixamo (Adobe) — 프로젝트 내 사용 가능, 원본 파일 단독 재배포 금지.
+- Idle Animations Pack — by **deedee524** (DeviantArt). 크레딧 필수, 원본 재배포 금지.
+- MMO用待機モーションセット — BowlRoll (https://bowlroll.net/file/8900).
+  두 팩은 직접 받아 `assets/motions/mmd/`에 풀어 둔다 (레포에 포함하지 않음).
 
 ## 참고한 오픈소스 / prior art
 설계 아이디어와 표준 수학을 비교하기 위해 다음 프로젝트를 조사했습니다.

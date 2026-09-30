@@ -6,19 +6,30 @@ const DIR = 'assets/motions/';
 // Bandai Namco Research motion dataset (CC BY-NC 4.0, © Bandai Namco Research Inc.), fetched by
 // scripts/get-bandai.sh — Japanese performers, feminine/childish styles. Name → file under DIR.
 const BN = (f) => `bandai/vmd/dataset-${f}_001`;
+const DD = (f) => `mmd/deedee524/Idle Animations Pack - Copy/${f}`;
 const FILES = {
   bow: BN('1_bow_feminine'), hi: BN('1_bye_feminine'), byebye: BN('1_byebye_childish'), wave: BN('2_wave-right-hand_feminine'),
   wave2: BN('2_wave-both-hands_youthful'), raise: BN('2_raise-up-right-hand_youthful'), guide: BN('1_guide_feminine'),
   guide2: BN('1_guide_happy'), guide3: BN('1_guide_childish'), respond: BN('1_respond_normal'), call: BN('1_call_normal'), shybow: BN('1_bow_not-confident'),
+  // MMD community motions (user-downloaded into assets/motions/mmd):
+  // "MMO用待機モーションセット" (BowlRoll 8900) — looping stands made for anime-girl MMD models
+  st_koa: 'mmd/mmo/koa_stand', st_rea: 'mmd/mmo/rea_stand', st_marieru: 'mmd/mmo/marieru_stand',
+  st_usa: 'mmd/mmo/usa_stand', st_ten: 'mmd/mmo/ten_stand',
+  // deedee524 "Idle Animations Pack" (DeviantArt; credit deedee524, don't redistribute originals)
+  stretch: DD('Stretching Idle Animation/Stretching'), fixhair: DD('Fixing Hair or Wig Idle Animation/Fixing Hair or Wig'),
+  tidy: DD('Tidy Idle Animation/Brushoff Nice and Tidy'), shyidle: DD('Shy Idle Animation/Shy'),
+  sway: DD('Swaying Idle Animation/Swaying Arms and Hips'), confident: DD('Confident Idle Animation/Crossed Arms Look Around Confident'),
+  impatient: DD('Impatient Idle Animation/Impatient Foot Tapping'), sky: DD('Skywatching Idle Animation/Something In The Sky'),
+  sniff: DD('Air Scent Idle Animation/Smelling Something in the Air'),
 };
 const fileOf = (name) => DIR + (FILES[name] ?? 'vmd/' + name).split('/').map(encodeURIComponent).join('/') + '.vmd';
-// Bandai Namco clips only. No idle/thinking clips in the dataset, so idle stays the code-built stand pose
-// and thinking/nod/shake stay procedural (Behavior.js).
+// Idle = MMD community motions (anime-girl stances); conversation gestures = Bandai. Missing files are
+// skipped, falling back to the code-built stand pose and procedural nods.
 export const LIBRARY = {
-  base: null,
-  idle: [],
+  base: ['st_koa', 'st_rea', 'st_marieru', 'st_usa', 'st_ten'], // looping stands, rotated each cycle
+  idle: ['stretch', 'fixhair', 'tidy', 'shyidle', 'sway', 'confident', 'impatient'], // occasional fidgets
   listening: ['respond'],
-  thinking: [],
+  thinking: ['sky', 'sniff'],
   speaking: ['guide', 'guide2', 'guide3'],
   reactions: {
     bow: 'bow', hi: 'hi', byebye: 'byebye', wave: 'wave', wave2: 'wave2', raise: 'raise', call: 'call', shybow: 'shybow',
@@ -39,19 +50,22 @@ export class MotionDirector {
   }
 
   async load() {
-    const names = new Set([LIBRARY.base, ...LIBRARY.idle, ...LIBRARY.listening, ...LIBRARY.thinking, ...LIBRARY.speaking, ...Object.values(LIBRARY.reactions)].filter(Boolean));
+    const names = new Set([...LIBRARY.base, ...LIBRARY.idle, ...LIBRARY.listening, ...LIBRARY.thinking, ...LIBRARY.speaking, ...Object.values(LIBRARY.reactions)].filter(Boolean));
     await Promise.all([...names].map(async (n) => {
       try { await this.c.addMotion(n, fileOf(n)); this.have.add(n); } catch { /* not downloaded */ }
     }));
-    if (this.have.has(LIBRARY.base) && this.enabled) this.toBase(1);
+    if (this.enabled) this.toBase(1);
     return this.have.size;
   }
 
   has(name) { return this.have.has(name); }
 
+  // Base stands play once each and rotate, so the idle never visibly loops.
   toBase(fade = FADE) {
     this.gesture = null;
-    this.c.play(this.have.has(LIBRARY.base) ? LIBRARY.base : 'stand', { fade });
+    const bases = LIBRARY.base.filter((n) => this.have.has(n));
+    this.base = bases.length ? pick(bases, this.base) : 'stand';
+    this.c.play(this.base, { fade, once: this.base !== 'stand' });
   }
 
   play(name) {
@@ -71,6 +85,9 @@ export class MotionDirector {
       const a = this.c.actions[this.gesture];
       if (a.time < a.getClip().duration - 0.15) return; // let it finish; the inertial switch hides the seam
       this.toBase();
+    } else if (this.base && this.base !== 'stand' && this.c.current === this.c.actions[this.base]) {
+      const a = this.c.actions[this.base];
+      if (a.time >= a.getClip().duration - 0.15) this.toBase(); // next stand
     }
     const pool = (LIBRARY[state] ?? []).filter((n) => this.have.has(n));
     if (!pool.length) return;
