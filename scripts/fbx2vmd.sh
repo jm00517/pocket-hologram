@@ -9,4 +9,4 @@ if [ ! -f .tools/fbx2vmd.mjs ]; then
   (cd .tools/reze-rig && npm install --no-audit --no-fund --silent &&
    npx esbuild scripts/fbx2vmd.ts --bundle --platform=node --format=esm --outfile=../fbx2vmd.mjs --log-level=warning)
 fi
-node .tools/fbx2vmd.mjs assets/motions --out assets/motions --target-pmx "$PMX"
+node .tools/fbx2vmd.mjs assets/motions --out assets/motions/vmd --no-bind-ref --target-pmx "$PMX"

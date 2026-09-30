@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { MMDLoader } from 'three/addons/loaders/MMDLoader.js';
 import { MMDAnimationHelper } from 'three/addons/animation/MMDAnimationHelper.js';
 import { Behavior } from './Behavior.js';
+import { MotionDirector } from './Motions.js';
 
 // Assets are NOT redistributed in this repo (MMD licenses forbid it); loaded at runtime from three.js r170.
 // Miku v2 (Animasa) + wavefile motion + KEITEL poses (non-commercial, modify/redistribute OK).
@@ -61,6 +62,8 @@ export class Character {
     // Procedural layer runs right after the mixer, before IK/physics, so hair and skirt react to it.
     const update = this.mixer.update.bind(this.mixer);
     this.mixer.update = (dt) => { this.undo(); update(dt); this.procedural(dt); return this.mixer; };
+    this.director = new MotionDirector(this); // full-body mocap clips per conversation state
+    this.director.load();
     return this.mesh;
   }
 
@@ -179,5 +182,9 @@ export class Character {
     p.warmup(60);
   }
 
-  update(dt) { if (this.mesh) this.helper.update(dt); }
+  update(dt) {
+    if (!this.mesh) return;
+    this.director.tick(dt);
+    this.helper.update(dt);
+  }
 }

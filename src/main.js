@@ -75,7 +75,7 @@ async function loadCharacter(url,manager){
 }
 motionSel.onchange=async()=>{
   const n=motionSel.value;status.textContent=`loading ${n}...`;
-  try{character.idle=n==='idle'||n.startsWith('pose');await character.play(n==='idle'?IDLE_POSE:n);status.textContent=n}
+  try{character.idle=n==='idle'||n.startsWith('pose');character.director.enabled=n==='idle';if(n==='idle')character.director.toBase();else await character.play(n);status.textContent=n}
   catch(e){status.textContent='error: '+(e.message||e)}
 };
 

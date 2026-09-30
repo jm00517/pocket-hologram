@@ -2,6 +2,7 @@
 // States blend smoothly (idle / listening / thinking / speaking); reactions are one-shot envelopes;
 // the mouth follows a text-derived vowel timeline (Korean, Japanese kana, Latin).
 import * as THREE from 'three';
+import { LIBRARY } from './Motions.js';
 
 const clamp = THREE.MathUtils.clamp;
 const STATES = ['idle', 'listening', 'thinking', 'speaking'];
@@ -44,6 +45,9 @@ export class Behavior {
   setState(s) { if (STATES.includes(s)) this.state = s; }
 
   react(name, len = { nod: 0.7, shake: 0.9, tilt: 1.6, happy: 1.8, surprised: 1.2, shy: 2.2, wave: 2.0 }[name] ?? 1) {
+    // prefer a mocap clip when one is loaded (nod/shake map onto Mixamo's nod / head-shake)
+    const clip = LIBRARY.reactions[{ nod: 'nod', shake: 'no' }[name] ?? name];
+    if (clip && this.c.director?.play(clip)) return;
     this.reactions = this.reactions.filter((r) => r.name !== name);
     this.reactions.push({ name, t: 0, len });
   }
@@ -75,7 +79,7 @@ export class Behavior {
 
     // listening: lean in, head tilted, small "uh-huh" nods now and then
     let nod = 0;
-    if (t > this.nextNod) { if (this.state === 'listening') this.react('nod', 0.5); this.nextNod = t + 2.5 + Math.random() * 3; }
+    if (t > this.nextNod) { if (this.state === 'listening' && !this.c.director?.has(LIBRARY.listening[0])) this.react('nod', 0.5); this.nextNod = t + 2.5 + Math.random() * 3; }
     c.rotate('上半身', 0.05 * L - 0.02 * T, 0, 0);
     c.rotate('頭', 0, 0, 0.12 * L - 0.08 * T);
 
