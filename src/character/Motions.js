@@ -1,4 +1,4 @@
-// Picks full-body mocap clips (Mixamo → VMD via scripts/fbx2vmd.sh) to match the conversation state.
+// Picks full-body mocap clips (VMD, see scripts/get-bandai.sh) to match the conversation state.
 // Base loop = an idle clip; gestures are one-shots that crossfade back to it. Missing files are skipped,
 // so without assets/motions the character just keeps the code-built stand pose.
 
@@ -9,18 +9,18 @@ const BN = (f) => `bandai/vmd/dataset-${f}_001`;
 const FILES = {
   bow: BN('1_bow_feminine'), hi: BN('1_bye_feminine'), byebye: BN('1_byebye_childish'), wave: BN('2_wave-right-hand_feminine'),
   wave2: BN('2_wave-both-hands_youthful'), raise: BN('2_raise-up-right-hand_youthful'), guide: BN('1_guide_feminine'),
-  guide2: BN('1_guide_happy'), respond: BN('1_respond_normal'), call: BN('1_call_normal'), shybow: BN('1_bow_not-confident'),
+  guide2: BN('1_guide_happy'), guide3: BN('1_guide_childish'), respond: BN('1_respond_normal'), call: BN('1_call_normal'), shybow: BN('1_bow_not-confident'),
 };
 const fileOf = (name) => DIR + (FILES[name] ?? 'vmd/' + name).split('/').map(encodeURIComponent).join('/') + '.vmd';
+// Bandai Namco clips only. No idle/thinking clips in the dataset, so idle stays the code-built stand pose
+// and thinking/nod/shake stay procedural (Behavior.js).
 export const LIBRARY = {
-  base: 'weight shift',
-  idle: ['relieved sigh', 'look away gesture'], // occasional fidgets
-  listening: ['acknowledging', 'head nod yes', 'lengthy head nod', 'respond'],
-  thinking: ['thoughtful head shake', 'look away gesture'],
-  speaking: ['talking', 'happy hand gesture', 'guide', 'guide2'],
+  base: null,
+  idle: [],
+  listening: ['respond'],
+  thinking: [],
+  speaking: ['guide', 'guide2', 'guide3'],
   reactions: {
-    nod: 'head nod yes', hardnod: 'hard head nod', no: 'shaking head no', angry: 'angry gesture',
-    annoyed: 'annoyed head shake', sigh: 'relieved sigh', cocky: 'being cocky', sarcastic: 'sarcastic head nod',
     bow: 'bow', hi: 'hi', byebye: 'byebye', wave: 'wave', wave2: 'wave2', raise: 'raise', call: 'call', shybow: 'shybow',
   },
 };
@@ -39,7 +39,7 @@ export class MotionDirector {
   }
 
   async load() {
-    const names = new Set([LIBRARY.base, ...LIBRARY.idle, ...LIBRARY.listening, ...LIBRARY.thinking, ...LIBRARY.speaking, ...Object.values(LIBRARY.reactions)]);
+    const names = new Set([LIBRARY.base, ...LIBRARY.idle, ...LIBRARY.listening, ...LIBRARY.thinking, ...LIBRARY.speaking, ...Object.values(LIBRARY.reactions)].filter(Boolean));
     await Promise.all([...names].map(async (n) => {
       try { await this.c.addMotion(n, fileOf(n)); this.have.add(n); } catch { /* not downloaded */ }
     }));
