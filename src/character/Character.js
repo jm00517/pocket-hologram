@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { MMDLoader } from 'three/addons/loaders/MMDLoader.js';
 import { MMDAnimationHelper } from 'three/addons/animation/MMDAnimationHelper.js';
+import { Behavior } from './Behavior.js';
 
 // Assets are NOT redistributed in this repo (MMD licenses forbid it); loaded at runtime from three.js r170.
 // Miku v2 (Animasa) + wavefile motion + KEITEL poses (non-commercial, modify/redistribute OK).
@@ -51,6 +52,7 @@ export class Character {
     this.bones = Object.fromEntries(this.mesh.skeleton.bones.map((b) => [b.name, b]));
     this.morphs = this.mesh.morphTargetDictionary;
     this.rest = new Map(this.mesh.skeleton.bones.map((b) => [b, b.position.clone()]));
+    this.behavior = new Behavior(this); // conversation states, reactions, lip sync
     const base = this.standClip();
     this.helper.add(this.mesh, { animation: [base], physics: await physics });
     this.mixer = this.helper.objects.get(this.mesh).mixer;
@@ -164,6 +166,7 @@ export class Character {
       const c = THREE.MathUtils.clamp;
       this.rotate('両目', c(pitch - hp, -0.25, 0.25) * this.eyeGain, c(yaw - hy, -0.4, 0.4) * this.eyeGain, 0);
     }
+    this.behavior.apply(dt);
   }
 
   // Call after moving the mesh (or its parents): otherwise dynamic bodies (skirt, hair) lag behind the

@@ -5,6 +5,7 @@ import { OffAxisCamera } from './spatial/OffAxisCamera.js';
 import { ModelLoader } from './models/ModelLoader.js';
 import { Calibration, isMobile } from './calibration/Calibration.js';
 import { bindCalibrationPanel } from './ui/CalibrationPanel.js';
+import { mountChatBar } from './ui/ChatBar.js';
 import { createTestChamber } from './scene/TestChamber.js';
 import { Character, BUILTIN_MOTIONS, IDLE_POSE, DEFAULT_MODEL } from './character/Character.js';
 
@@ -106,6 +107,7 @@ $('#fullscreen').onclick=()=>{document.documentElement.requestFullscreen?.();scr
 $('#calibrate').onclick=()=>calPanel.classList.toggle('hidden');
 $('#debug').onclick=()=>debugPanel.classList.toggle('hidden');
 bindCalibrationPanel(calPanel,calibration,layout);
+window.chat=mountChatBar(()=>character?.behavior);
 
 function resize(){renderer.setSize(innerWidth,innerHeight,false);layout()}addEventListener('resize',resize);addEventListener('fullscreenchange',resize);resize();
 // Local models live in assets/ (gitignored, MMD licenses forbid redistribution). The first one that exists
