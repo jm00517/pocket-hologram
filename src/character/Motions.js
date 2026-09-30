@@ -11,6 +11,13 @@ const FILES = {
   wave2: BN('2_wave-both-hands_youthful'), raise: BN('2_raise-up-right-hand_youthful'), guide: BN('1_guide_feminine'),
   guide2: BN('1_guide_happy'), guide3: BN('1_guide_childish'), respond: BN('1_respond_normal'), call: BN('1_call_normal'), shybow: BN('1_bow_not-confident'),
 };
+// Upper body only for the Bandai clips: their retargeted legs cross the feet (foot IK) or splay them
+// (FK), so legs/hips come from the stand pose instead and the idle's weight shift keeps running.
+const LOWER = /^\.bones\[(全ての親|センター|グルーブ|腰|[左右](足|ひざ|足首|足先EX|足ＩＫ|つま先ＩＫ))\]/;
+function upperBodyOnly(c) {
+  const legs = c.actions.stand.getClip().tracks.filter((t) => LOWER.test(t.name));
+  return (clip) => { clip.tracks = clip.tracks.filter((t) => !LOWER.test(t.name)).concat(legs.map((t) => t.clone())); clip.resetDuration(); };
+}
 const fileOf = (name) => DIR + (FILES[name] ?? 'vmd/' + name).split('/').map(encodeURIComponent).join('/') + '.vmd';
 // Bandai Namco clips only. No idle/thinking clips in the dataset, so idle stays the code-built stand pose
 // and thinking/nod/shake stay procedural (Behavior.js).
@@ -41,7 +48,7 @@ export class MotionDirector {
   async load() {
     const names = new Set([LIBRARY.base, ...LIBRARY.idle, ...LIBRARY.listening, ...LIBRARY.thinking, ...LIBRARY.speaking, ...Object.values(LIBRARY.reactions)].filter(Boolean));
     await Promise.all([...names].map(async (n) => {
-      try { await this.c.addMotion(n, fileOf(n)); this.have.add(n); } catch { /* not downloaded */ }
+      try { await this.c.addMotion(n, fileOf(n), FILES[n] ? upperBodyOnly(this.c) : undefined); this.have.add(n); } catch { /* not downloaded */ }
     }));
     if (this.have.has(LIBRARY.base) && this.enabled) this.toBase(1);
     return this.have.size;

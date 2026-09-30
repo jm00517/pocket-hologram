@@ -118,11 +118,13 @@ export class Character {
   }
 
   // url or File. .vpd → static pose, .vmd → motion clip.
-  async addMotion(name, src) {
+  // transform: optional (clip) => void, runs before the action binds (e.g. strip tracks)
+  async addMotion(name, src, transform) {
     const url = src instanceof File ? URL.createObjectURL(src) : src;
     const isPose = /\.vpd$/i.test(src.name ?? src);
     const clip = isPose ? await this.poseClip(url, name) : await new Promise((ok, err) => this.loader.loadAnimation(url, this.mesh, ok, undefined, err));
     clip.name = name;
+    transform?.(clip);
     const a = this.mixer.clipAction(clip);
     a.setEffectiveWeight(0).play();
     this.actions[name] = a;
