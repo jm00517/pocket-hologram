@@ -10,6 +10,7 @@ import { MotionDirector } from './Motions.js';
 export const IDLE_POSE = 'stand';
 // Upright rest pose built in code. Arms are lowered to ARM_DROP below horizontal, measured from each
 // model's own rest pose (T-pose vs A-pose differ), elbows slightly bent.
+const STANCE = 0.4; // foot spacing as a fraction of hip width (Bandai feminine clips stand at ~0.2–0.4)
 const ARM_DROP = 1.2; // radians below horizontal (~70°); ponytail: one angle for all models, tune if hands clip the skirt
 const MMD = 'https://raw.githubusercontent.com/mrdoob/three.js/r170/examples/models/mmd/';
 export const DEFAULT_MODEL = MMD + 'miku/miku_v2.pmd';
@@ -43,6 +44,8 @@ export class Character {
     this.eyeGain = 1; // eye bone rotation multiplier; ponytail: tune per model if irises over/under-shoot
     this.nextBlink = 2;
     this.offsets = new Map(); // bone -> quaternion applied last frame (undone before the mixer runs)
+    this.moves = new Map();   // bone -> [x,y,z] position offset applied last frame
+    this.idleAmt = 1;
   }
 
   // manager: optional LoadingManager (maps dropped texture files by name)
@@ -82,6 +85,19 @@ export class Character {
       const qa = q.setFromEuler(e.set(...r)).toArray();
       return new THREE.QuaternionKeyframeTrack(`.bones[${n}].quaternion`, [0, 1], [...qa, ...qa]);
     });
+    // Narrow, feminine stance: pull the foot IK targets in so transitions into the (feet-together)
+    // Bandai clips don't slide the feet.
+    const fl = this.bones['左足ＩＫ'], fr = this.bones['右足ＩＫ'];
+    const hipL = at('左足'), hipR = at('右足'), ikL = at('左足ＩＫ'), ikR = at('右足ＩＫ');
+    if (fl && fr && hipL && hipR) {
+      // measured in model space: IK bones sit at 0 under their own parent (足IK親)
+      const pl = this.rest.get(fl), pr = this.rest.get(fr);
+      const inward = ((ikL.x - ikR.x) - STANCE * (hipL.x - hipR.x)) / 2;
+      for (const [b, p, dx] of [[fl, pl, -inward], [fr, pr, inward]]) {
+        const v = p.clone().add(new THREE.Vector3(dx, 0, 0)).toArray();
+        tracks.push(new THREE.VectorKeyframeTrack(`.bones[${b.name}].position`, [0, 1], [...v, ...v]));
+      }
+    }
     return new THREE.AnimationClip(IDLE_POSE, 1, tracks);
   }
 
@@ -137,17 +153,48 @@ export class Character {
     this.offsets.set(b, prev ? prev.multiply(q) : q.clone());
   }
 
+  move(boneName, x, y, z) {
+    const b = this.bones[boneName];
+    if (!b) return;
+    b.position.x += x; b.position.y += y; b.position.z += z;
+    const prev = this.moves.get(b) ?? [0, 0, 0];
+    this.moves.set(b, [prev[0] + x, prev[1] + y, prev[2] + z]);
+  }
+
   undo() {
     for (const [b, o] of this.offsets) b.quaternion.multiply(o.invert());
+    for (const [b, [x, y, z]] of this.moves) { b.position.x -= x; b.position.y -= y; b.position.z -= z; }
     this.offsets.clear();
+    this.moves.clear();
   }
 
   procedural(dt) {
     this.t += dt;
     const t = this.t;
+    // Relaxed hands: MMD rest fingers are ramrod straight. Curl about Z (left −, right +), always on
+    // because the mocap clips carry no finger tracks.
+    for (const [side, sg] of [['左', -1], ['右', 1]]) {
+      for (const [f, c] of [['人指', 0.2], ['中指', 0.3], ['薬指', 0.38], ['小指', 0.45]])
+        for (const j of ['１', '２', '３']) this.rotate(side + f + j, 0, 0, sg * c);
+      this.rotate(side + '親指２', 0, sg * 0.15, 0);
+    }
     if (this.idle) {
-      this.rotate('上半身', Math.sin(t * 1.6) * 0.02, 0, Math.sin(t * 0.5) * 0.02); // breath + sway
-      this.rotate('下半身', 0, 0, -Math.sin(t * 0.5) * 0.015);
+      // Layered idle: breathing, slow weight shift over planted feet, head/arm drift. Sums of sines at
+      // unrelated frequencies so it never visibly loops. Damped while a gesture clip plays.
+      const k = 1 - Math.exp(-dt * 3);
+      this.idleAmt += ((this.director?.gesture ? 0.3 : 1) - this.idleAmt) * k;
+      const a = this.idleAmt, n = (f, p = 0) => Math.sin(t * f + p);
+      const breath = 0.5 - 0.5 * Math.cos(t * 1.45); // ~4.3 s per breath
+      const shift = n(0.42) * 0.65 + n(0.19, 1.3) * 0.35; // −1..1, ~15 s
+      this.rotate('上半身', -0.025 * breath * a, n(0.23, 2) * 0.02 * a, -shift * 0.025 * a);
+      this.rotate('上半身2', -0.015 * breath * a, 0, 0);
+      this.rotate('左肩', 0, 0, 0.03 * breath * a);
+      this.rotate('右肩', 0, 0, -0.03 * breath * a);
+      this.move('センター', shift * 0.18 * a, -Math.abs(shift) * 0.05 * a, 0); // hips over one foot, knee softens
+      this.rotate('下半身', 0, 0, shift * 0.04 * a);
+      this.rotate('頭', n(0.7) * 0.015 * a, n(0.43, 2) * 0.02 * a, n(0.31, 1) * 0.015 * a);
+      this.rotate('左腕', 0, 0, (n(0.5, 0.5) * 0.02 + shift * 0.02) * a);
+      this.rotate('右腕', 0, 0, (n(0.47, 1.7) * 0.02 + shift * 0.02) * a);
       // blink: ~120 ms close/open every 2–6 s
       const bt = t - this.nextBlink;
       this.morph('まばたき', bt < 0 ? 0 : bt < 0.06 ? bt / 0.06 : bt < 0.12 ? 1 - (bt - 0.06) / 0.06 : 0);
