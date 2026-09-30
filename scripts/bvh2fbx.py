@@ -7,6 +7,7 @@ import os
 import sys
 
 import bpy
+from mathutils import Matrix, Vector
 
 RENAME = {
     'Hips': 'Hips', 'Spine': 'Spine', 'Chest': 'Spine2', 'Neck': 'Neck', 'Head': 'Head',
@@ -15,8 +16,6 @@ RENAME = {
     'UpperLeg_L': 'LeftUpLeg', 'LowerLeg_L': 'LeftLeg', 'Foot_L': 'LeftFoot', 'Toes_L': 'LeftToeBase',
     'UpperLeg_R': 'RightUpLeg', 'LowerLeg_R': 'RightLeg', 'Foot_R': 'RightFoot', 'Toes_R': 'RightToeBase',
 }
-
-from mathutils import Matrix, Vector
 
 UP_CHAIN = ['Hips', 'Spine', 'Chest', 'Neck', 'Head']
 ARM = ['Shoulder_{s}', 'UpperArm_{s}', 'LowerArm_{s}', 'Hand_{s}']
@@ -31,7 +30,37 @@ def load(path):
     arm.name = 'Armature'
     arm.select_set(True)
     bpy.context.view_layer.objects.active = arm
+    normalize(arm)
     return arm
+
+
+def normalize(arm):
+    """Each take was captured at a different spot on the stage, facing a different way (bow is turned
+    ~28°). The retargeter reads that as hip/foot offsets from the bind (feet crossed, hips shoved
+    sideways), so re-root every frame so frame 1 has the hips over the origin, facing -Y."""
+    sc, pb = bpy.context.scene, arm.pose.bones
+    sc.frame_set(sc.frame_start)
+    W = lambda n: pb[n].head.copy()  # armature space (object has identity transform)
+    left = W('UpperLeg_L') - W('UpperLeg_R')
+    left.z = 0
+    left.normalize()
+    fwd = left.cross(Vector((0, 0, 1)))
+    yaw = Vector((0, -1, 0)).to_2d().angle_signed(fwd.to_2d())  # rotate fwd onto -Y
+    hips = W('Hips')
+    fix = Matrix.Rotation(yaw, 4, 'Z') @ Matrix.Translation((-hips.x, -hips.y, 0))
+    # Bake into Hips itself: the retargeter ignores the unmapped joint_Root's rotation.
+    p = pb['Hips']
+    rot = 'rotation_quaternion' if p.rotation_mode == 'QUATERNION' else 'rotation_euler'
+    frames = range(sc.frame_start, sc.frame_end + 1)
+    mats = []
+    for f in frames:
+        sc.frame_set(f)
+        mats.append(fix @ p.matrix)
+    for f, m in zip(frames, mats):
+        sc.frame_set(f)
+        p.matrix = m
+        p.keyframe_insert('location', frame=f)
+        p.keyframe_insert(rot, frame=f)
 
 
 def rename_and_export(arm, out):

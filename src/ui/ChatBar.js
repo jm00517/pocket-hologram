@@ -21,7 +21,8 @@ export function mountChatBar(getBehavior) {
   bar.id = 'chat';
   bar.innerHTML = `
     <div class="row">${REACTIONS.map((r) => `<button data-r="${r}">${r}</button>`).join('')}
-      <select data-s>${STATES.map((s) => `<option>${s}</option>`).join('')}</select></div>
+      <select data-s>${STATES.map((s) => `<option>${s}</option>`).join('')}</select>
+      <label><input type="checkbox" data-inertia checked> 관성 블렌딩</label></div>
     <form class="row"><input placeholder="말 걸기 (지금은 따라 말함)" autocomplete="off"><button>보내기</button></form>`;
   document.body.append(bar);
   const input = bar.querySelector('input'), stateSel = bar.querySelector('[data-s]');
@@ -29,6 +30,7 @@ export function mountChatBar(getBehavior) {
 
   bar.querySelectorAll('[data-r]').forEach((el) => (el.onclick = () => b()?.react(el.dataset.r)));
   stateSel.onchange = () => b()?.setState(stateSel.value);
+  bar.querySelector('[data-inertia]').onchange = (e) => { if (b()) b().c.inertialBlend = e.target.checked; };
   input.oninput = () => { if (input.value && b()?.state === 'idle') b().setState('listening'); };
   input.onblur = () => { if (!input.value && b()?.state === 'listening') b().setState('idle'); };
 

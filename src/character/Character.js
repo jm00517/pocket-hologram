@@ -3,6 +3,7 @@ import { MMDLoader } from 'three/addons/loaders/MMDLoader.js';
 import { MMDAnimationHelper } from 'three/addons/animation/MMDAnimationHelper.js';
 import { Behavior } from './Behavior.js';
 import { MotionDirector } from './Motions.js';
+import { Inertializer } from './Inertia.js';
 
 // Assets are NOT redistributed in this repo (MMD licenses forbid it); loaded at runtime from three.js r170.
 // Miku v2 (Animasa) + wavefile motion + KEITEL poses (non-commercial, modify/redistribute OK).
@@ -46,6 +47,7 @@ export class Character {
     this.offsets = new Map(); // bone -> quaternion applied last frame (undone before the mixer runs)
     this.moves = new Map();   // bone -> [x,y,z] position offset applied last frame
     this.idleAmt = 1;
+    this.inertialBlend = true; // false = old linear crossfade (A/B toggle in the chat bar)
   }
 
   // manager: optional LoadingManager (maps dropped texture files by name)
@@ -64,7 +66,17 @@ export class Character {
     for (const a of Object.values(this.actions)) a.setEffectiveWeight(a === this.current ? 1 : 0);
     // Procedural layer runs right after the mixer, before IK/physics, so hair and skirt react to it.
     const update = this.mixer.update.bind(this.mixer);
-    this.mixer.update = (dt) => { this.undo(); update(dt); this.procedural(dt); return this.mixer; };
+    // Clip switches are queued so the old pose can be captured, then inertialized (Inertia.js).
+    this.inertia = new Inertializer(this.mesh.skeleton.bones);
+    const rotB = (b, q) => this.rotateBone(b, q), movB = (b, x, y, z) => this.moveBone(b, x, y, z);
+    this.mixer.update = (dt) => {
+      this.undo();
+      if (this.pendingSwitch) { this.inertia.capture(); this.pendingSwitch(); this.pendingSwitch = null; }
+      update(dt);
+      this.inertia.apply(dt, rotB, movB);
+      this.procedural(dt);
+      return this.mixer;
+    };
     this.director = new MotionDirector(this); // full-body mocap clips per conversation state
     this.director.load();
     return this.mesh;
@@ -131,33 +143,48 @@ export class Character {
     return a;
   }
 
-  async play(name, { fade = 0.4, once = false } = {}) {
+  // inertial (default): instant switch + decaying pose/velocity offset; else a linear crossfade of `fade` s
+  async play(name, { fade = 0.4, once = false, inertial = this.inertialBlend } = {}) {
     if (!this.actions[name]) {
       if (!BUILTIN_MOTIONS[name]) throw new Error(`unknown motion: ${name}`);
       await this.addMotion(name, BUILTIN_MOTIONS[name]);
     }
     const next = this.actions[name], prev = this.current;
     if (next === prev) return;
-    next.reset().setEffectiveWeight(1).setLoop(once ? THREE.LoopOnce : THREE.LoopRepeat, Infinity).play();
-    next.clampWhenFinished = once;
-    if (prev) prev.crossFadeTo(next, fade, false);
     this.current = next;
+    const start = () => {
+      next.reset().setEffectiveWeight(1).setLoop(once ? THREE.LoopOnce : THREE.LoopRepeat, Infinity).play();
+      next.clampWhenFinished = once;
+    };
+    if (inertial && this.inertia) {
+      this.pendingSwitch = () => { for (const a of Object.values(this.actions)) if (a !== next) a.stop(); start(); };
+    } else {
+      start();
+      if (prev) prev.crossFadeTo(next, fade, false);
+    }
   }
+
 
   morph(name, w) { const i = this.morphs[name]; if (i !== undefined) this.mesh.morphTargetInfluences[i] = w; }
 
   rotate(boneName, x, y, z) {
     const b = this.bones[boneName];
-    if (!b) return;
-    q.setFromEuler(e.set(x, y, z));
-    b.quaternion.multiply(q);
+    if (b) this.rotateBone(b, q.setFromEuler(e.set(x, y, z)));
+  }
+
+  // local post-multiply, remembered so undo() can remove it before the mixer runs next frame
+  rotateBone(b, quat) {
+    b.quaternion.multiply(quat);
     const prev = this.offsets.get(b);
-    this.offsets.set(b, prev ? prev.multiply(q) : q.clone());
+    this.offsets.set(b, prev ? prev.multiply(quat) : quat.clone());
   }
 
   move(boneName, x, y, z) {
     const b = this.bones[boneName];
-    if (!b) return;
+    if (b) this.moveBone(b, x, y, z);
+  }
+
+  moveBone(b, x, y, z) {
     b.position.x += x; b.position.y += y; b.position.z += z;
     const prev = this.moves.get(b) ?? [0, 0, 0];
     this.moves.set(b, [prev[0] + x, prev[1] + y, prev[2] + z]);
