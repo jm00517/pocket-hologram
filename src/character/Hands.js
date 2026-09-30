@@ -7,10 +7,10 @@ const P = (idx, mid, ring, pinky, thumb) => ({ f: [idx, mid, ring, pinky], thumb
 export const HAND_POSES = {
   soft: P([0.1, 0.15, 0.1], [0.25, 0.3, 0.2], [0.3, 0.35, 0.25], [0.15, 0.2, 0.15], [0.05, 0.1, 0.1]), // anime-graceful, pinky a bit out
   open: P([0.03, 0.03, 0.02], [0.03, 0.03, 0.02], [0.03, 0.03, 0.02], [0.03, 0.03, 0.02], [0, 0, 0]),
-  fist: P([1.3, 1.5, 1.1], [1.35, 1.5, 1.1], [1.4, 1.5, 1.1], [1.45, 1.5, 1.1], [0.35, 0.6, 0.7]),
-  point: P([0.05, 0.05, 0.05], [1.35, 1.5, 1.1], [1.4, 1.5, 1.1], [1.45, 1.5, 1.1], [0.35, 0.6, 0.7]),
-  peace: P([0.05, 0.05, 0.05], [0.05, 0.05, 0.05], [1.4, 1.5, 1.1], [1.45, 1.5, 1.1], [0.35, 0.6, 0.7]),
-  clasp: P([0.55, 0.65, 0.45], [0.6, 0.7, 0.45], [0.65, 0.7, 0.45], [0.7, 0.7, 0.45], [0.25, 0.35, 0.3]),
+  fist: P([1.3, 1.5, 1.1], [1.35, 1.5, 1.1], [1.4, 1.5, 1.1], [1.45, 1.5, 1.1], [0.3, 0.7, 0.9]),
+  point: P([0.05, 0.05, 0.05], [1.35, 1.5, 1.1], [1.4, 1.5, 1.1], [1.45, 1.5, 1.1], [0.3, 0.7, 0.9]),
+  peace: P([0.05, 0.05, 0.05], [0.05, 0.05, 0.05], [1.4, 1.5, 1.1], [1.45, 1.5, 1.1], [0.3, 0.7, 0.9]),
+  clasp: P([0.55, 0.65, 0.45], [0.6, 0.7, 0.45], [0.65, 0.7, 0.45], [0.7, 0.7, 0.45], [0.2, 0.4, 0.4]),
 };
 export const HAND_MODES = ['auto', ...Object.keys(HAND_POSES)];
 const SIDES = [['左', -1], ['右', 1]]; // curl sign about Z (left hand extends +X)
@@ -50,7 +50,9 @@ export class Hands {
       });
       for (let j = 0; j < 3; j++) {
         cur.thumb[j] += (target.thumb[j] - cur.thumb[j]) * k;
-        c.rotate(`${s}親指${'０１２'[j]}`, 0, sg * cur.thumb[j] * 0.8, sg * cur.thumb[j] * 0.4);
+        // thumb folds about +X on both hands (measured: brings the tip onto the curled index/middle),
+        // with a slight inward swing
+        c.rotate(`${s}親指${'０１２'[j]}`, cur.thumb[j], -sg * cur.thumb[j] * 0.15, 0);
       }
       // wrist: slow, small, independent per hand
       const p = this.phase[hi * 6 + 4];
