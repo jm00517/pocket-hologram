@@ -28,6 +28,18 @@ MMD 에셋은 이 레포에 포함하지 않고 three.js r170 원본 위치에�
 - wavefile 모션: 원본 재배포 금지, 성인물 금지.
 상업적 사용이나 다른 캐릭터로 바꾸려면 해당 에셋의 readme를 따로 확인할 것.
 
+## 전신 모션
+- `src/character/Motions.js`: 대화 상태별 모션캡처 클립 자동 재생. 대기 루프 위에 제스처를 크로스페이드한다.
+- Mixamo FBX → `assets/motions/`에 넣고 `bash scripts/fbx2vmd.sh` (reze-rig, MIT).
+- 반다이남코 리서치 모션 데이터셋 → `bash scripts/get-bandai.sh` (Blender 필요).
+  BVH의 0-회전 자세가 사람 자세가 아니라서 `scripts/bvh2fbx.py`가 T자 기준 자세를 계산해 바인드로 쓴다.
+- 모션 파일은 `assets/`(gitignore)에만 둔다.
+
+### 모션 출처
+- Bandai Namco Research Motion Dataset — © Bandai Namco Research Inc., CC BY-NC 4.0 (비상업).
+  https://github.com/BandaiNamcoResearchInc/Bandai-Namco-Research-Motiondataset
+- Mixamo (Adobe) — 프로젝트 내 사용 가능, 원본 파일 단독 재배포 금지.
+
 ## 참고한 오픈소스 / prior art
 설계 아이디어와 표준 수학을 비교하기 위해 다음 프로젝트를 조사했습니다.
 

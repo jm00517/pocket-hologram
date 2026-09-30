@@ -3,7 +3,7 @@
 // typed text echoed back; swap `reply()` for the LLM call later.
 import { toVowels } from '../character/Behavior.js';
 
-const REACTIONS = ['nod', 'hardnod', 'shake', 'tilt', 'happy', 'surprised', 'shy', 'wave', 'angry', 'annoyed', 'sigh', 'cocky', 'sarcastic'];
+const REACTIONS = ['nod', 'shake', 'tilt', 'happy', 'surprised', 'shy', 'wave', 'wave2', 'bow', 'shybow', 'hi', 'byebye', 'raise', 'call', 'sigh', 'angry', 'annoyed'];
 const STATES = ['idle', 'listening', 'thinking', 'speaking'];
 
 const langOf = (s) => (/[가-힣]/.test(s) ? 'ko' : /[぀-ヿ]/.test(s) ? 'ja' : 'en');
