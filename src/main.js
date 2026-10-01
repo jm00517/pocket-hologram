@@ -10,6 +10,7 @@ import { createTestChamber } from './scene/TestChamber.js';
 import { createCrossing } from './scene/Crossing.js';
 import { createPost } from './scene/Post.js';
 import { createWeather } from './scene/Weather.js';
+import { addFoliage } from './scene/Foliage.js';
 import { Character, BUILTIN_MOTIONS, IDLE_POSE, DEFAULT_MODEL } from './character/Character.js';
 
 const $=s=>document.querySelector(s),canvas=$('#scene'),video=$('#camera'),status=$('#status'),debugPanel=$('#debugPanel'),calPanel=$('#calibration'),motionSel=$('#motion'),modelSel=$('#modelSel');
@@ -19,6 +20,12 @@ renderer.toneMapping=THREE.NeutralToneMapping;renderer.toneMappingExposure=1; //
 const scene=new THREE.Scene();scene.background=new THREE.Color(0x03050a);
 const camera=new THREE.PerspectiveCamera(45,1,.01,30000),spatial=new OffAxisCamera(camera,{far:30000});
 let eye={x:0,y:0,z:isMobile?.42:.6},rawEye={...eye};
+const restEye={...eye},viewEye={...eye},viewVel={x:0,y:0,z:0};
+// critically damped spring toward target (Holden), per axis; mutates pos/vel
+function dampSpring(pos,vel,target,halflife,dt){
+  const y=(4*Math.LN2)/halflife/2,e=Math.exp(-y*dt);
+  for(const k of ['x','y','z']){const j0=pos[k]-target[k],j1=vel[k]+j0*y;pos[k]=e*(j0+j1*dt)+target[k];vel[k]=e*(vel[k]-j1*y*dt)}
+}
 window.setEye=p=>{eye={...eye,...p}}; // debug: fake a viewer position (meters) without the camera
 
 // three.js MMD example lighting, a bit dimmer (3/3 blew out skin on Sour-style models).
@@ -31,6 +38,8 @@ const post=createPost(renderer,scene,camera,outline);window.post=post; // debug
 // Background: the railway crossing (default) or the calibration grid room.
 const crossing=createCrossing(renderer);window.crossing=crossing; // debug
 const weather=createWeather({renderer,scene,crossing,post,ambient,key});window.weather=weather;
+let foliage=null;const foliageLevel=new URLSearchParams(location.search).get('foliage')??'full'; // full | grass | off
+if(foliageLevel!=='off')addFoliage(crossing.group,renderer,{models:foliageLevel==='full'}).then(f=>foliage=f).catch(e=>console.error('foliage',e));
 let weatherName=new URLSearchParams(location.search).get('weather')||'sunset';
 let bg=new URLSearchParams(location.search).get('bg')||'crossing',weatherSel=null;
 function applyBackground(){
@@ -200,9 +209,14 @@ const MODELS=[
 const clock=new THREE.Clock();
 function frame(){
   const dt=Math.min(clock.getDelta(),.1);
-  const vp=viewport();spatial.update({x:(eye.x-vp.ox)*K,y:(eye.y-vp.oy)*K,z:eye.z*K});
+  // Head motion: critically damped spring (kills tracker jitter) + parallax strength around the rest pose.
+  // A physically exact window (parallax 1) swings the far background as much as the head moves.
+  const c=calibration.data,P=c.parallax??1,hl=Math.max(.001,c.smoothing??0);
+  dampSpring(viewEye,viewVel,eye,hl,dt);const rest=restEye;
+  const ve={x:rest.x+(viewEye.x-rest.x)*P,y:rest.y+(viewEye.y-rest.y)*P,z:rest.z+(viewEye.z-rest.z)*P};
+  const vp=viewport();spatial.update({x:(ve.x-vp.ox)*K,y:(ve.y-vp.oy)*K,z:ve.z*K});
   if(character){character.lookTarget=camera.position;character.update(dt);const c=character.bones['センター'].getWorldPosition(blob.position);stage.worldToLocal(c);c.y=.01}
   debugPanel.textContent=`filtered eye (m)\nx ${eye.x.toFixed(3)}\ny ${eye.y.toFixed(3)}\nz ${eye.z.toFixed(3)}\n\nraw z ${rawEye.z.toFixed(3)}\nHFOV ${calibration.data.cameraHFovDeg.toFixed(1)}°\nK ${K.toFixed(1)}`;
-  crossing.tick(clock.elapsedTime,dt);weather.tick(clock.elapsedTime,dt);
+  crossing.tick(clock.elapsedTime,dt);weather.tick(clock.elapsedTime,dt);foliage?.tick(clock.elapsedTime);
   post.render();requestAnimationFrame(frame)
 }frame();

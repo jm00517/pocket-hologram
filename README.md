@@ -36,6 +36,9 @@ MMD 에셋은 이 레포에 포함하지 않고 three.js r170 원본 위치에�
   실사 HDRI 하늘의 태양 위치를 찾아 그림자 방향을 맞추고, 비 온 뒤는 젖은 아스팔트에 실제 평면 반사,
   눈은 내리는 눈과 눈 덮인 땅·지붕, 밤은 가로등·자판기·경보등 불빛. 프리셋마다 색보정.
 - 실사 에셋: `python scripts/get-polyhaven.py` (Poly Haven, CC0, 약 37MB → `assets/polyhaven/`). 없으면 애니 맑음만.
+- 식생: 바람에 흔들리는 풀잎 4.2만 장(인스턴싱), Poly Haven 식물 모델(고사리·잡초·괭이밥·민들레·덤불),
+  가까운 나무 2그루(jacaranda, `scripts/lighten_tree.py`로 386만→43만 면, Draco 9.8MB), 먼 숲은 같은 나무의 임포스터.
+  `?foliage=grass`(풀만) / `?foliage=off`로 끌 수 있다.
 - 상단 선택으로 踏切/grid 전환, 또는 `?bg=grid`.
 
 ## 전신 모션
@@ -81,6 +84,9 @@ python scripts/server.py          # http://localhost:3210
 카메라 API는 secure context(HTTPS 또는 localhost)가 필요하므로 폰은 USB 연결 후 `adb reverse tcp:3210 tcp:3210`.
 
 ## Calibration
+- Parallax (%): 머리 움직임에 따른 시차 강도. 100 = 물리적으로 정확한 창문, 기본 50 (배경이 덜 출렁임).
+- Smoothing (ms): 머리 움직임 스프링의 반감기. 기본 150ms. 떨림이 보이면 올리고, 굼뜨면 내린다.
+
 기본값은 Galaxy S21 Ultra 근사 preset입니다. Calibration 버튼에서 다음 값을 조절할 수 있습니다.
 
 - visible screen width / height

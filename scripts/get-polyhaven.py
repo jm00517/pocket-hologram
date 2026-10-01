@@ -19,6 +19,7 @@ HDRIS = {  # weather preset -> pure-sky HDRI (no ground, so our scene's horizon 
 TEXTURES = ['asphalt_02', 'sandy_gravel_02', 'sparse_grass', 'snow_02', 'white_plaster_02',
             'concrete_floor_worn_001', 'rusty_metal_02', 'grey_roof_tiles_02']
 MAPS = {'diff': 'Diffuse', 'nor_gl': 'nor_gl', 'rough': 'Rough'}
+MODELS = ['jacaranda_tree', 'fern_02', 'weed_plant_02', 'shrub_sorrel_01', 'shrub_04', 'dandelion_01']  # glTF 1k
 
 
 UA = {'User-Agent': 'pocket-hologram/1.0 (personal project)'}  # Poly Haven rejects urllib's default UA
@@ -50,8 +51,14 @@ def main():
         files = api(asset)
         for short, key in MAPS.items():
             fetch(files[key]['1k']['jpg']['url'], os.path.join(ROOT, 'tex', asset, f'{short}.jpg'))
+    for asset in MODELS:
+        g = api(asset)['gltf']['1k']['gltf']
+        base = os.path.join(ROOT, 'models', asset)
+        fetch(g['url'], os.path.join(base, f'{asset}.gltf'))
+        for rel, inc in g.get('include', {}).items():
+            fetch(inc['url'], os.path.join(base, *rel.split('/')))
     with open(os.path.join(ROOT, 'CREDITS.txt'), 'w', encoding='utf-8') as f:
-        f.write('Poly Haven (https://polyhaven.com), CC0.\n' + '\n'.join(list(HDRIS.values()) + TEXTURES) + '\n')
+        f.write('Poly Haven (https://polyhaven.com), CC0.\n' + '\n'.join(list(HDRIS.values()) + TEXTURES + MODELS) + '\n')
     print('done')
 
 

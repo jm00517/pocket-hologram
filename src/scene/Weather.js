@@ -154,6 +154,11 @@ export function createWeather({ renderer, scene, crossing, post, ambient, key })
   let hasAssets = null, current = 'anime', reflector = null, snow = null, U = 1;
   const snowCover = (() => { const set = pbrSet('snow_02', [90, 90]); return set; });
   let snowTex = null;
+  // grass/plants are buried under snow; the old card grass only shows if the blade grass never loaded
+  const showPlants = (on) => {
+    if (REFS.grass) { REFS.grass.visible = on; if (REFS.plants) REFS.plants.visible = on; REFS.tufts.visible = false; }
+    else REFS.tufts.visible = on;
+  };
   const restoreDry = () => {
     for (const m of [REFS.road.material, REFS.ground.material, REFS.ballast.material, ...REFS.roofs, ...REFS.leaves]) {
       const d = m.userData.dry; if (!d) continue;
@@ -177,7 +182,7 @@ export function createWeather({ renderer, scene, crossing, post, ambient, key })
         ambient.color.set('#aaaaaa'); ambient.intensity = 1.1; key.color.set('#ffffff'); key.intensity = 0.6;
         crossing.flareHolder.visible = true; crossing.redPower = 0;
         for (const n of REFS.nightLights) { n.light.intensity = 0; if (n.mat) n.mat.emissiveIntensity = 0; }
-        if (reflector) reflector.visible = false; REFS.road.visible = true; if (snow) snow.visible = false; REFS.tufts.visible = true;
+        if (reflector) reflector.visible = false; REFS.road.visible = true; if (snow) snow.visible = false; showPlants(true);
         return current;
       }
       const sky = await loadSky(renderer, w.hdri);
@@ -211,10 +216,10 @@ export function createWeather({ renderer, scene, crossing, post, ambient, key })
         for (const m of REFS.roofs) { Object.assign(m, snowTex); m.color.set('#f4f7fb'); m.needsUpdate = true; }
         for (const m of REFS.leaves) m.color.lerp(new THREE.Color('#eef3f7'), 0.55);
         REFS.road.material.color.set('#eceff2'); REFS.ballast.material.color.lerp(new THREE.Color('#ffffff'), 0.6);
-        REFS.tufts.visible = false;
+        showPlants(false);
         if (!snow) { snow = snowfall(); REFS.road.parent.add(snow); }
         snow.material.size = 0.14 * U; snow.visible = true;
-      } else { REFS.tufts.visible = true; if (snow) snow.visible = false; }
+      } else { showPlants(true); if (snow) snow.visible = false; }
       // night lights
       const night = !!w.night;
       for (const n of REFS.nightLights) {

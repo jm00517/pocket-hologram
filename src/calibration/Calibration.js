@@ -7,6 +7,8 @@ export const GALAXY_S21_ULTRA={
   cameraOffsetXM:0,
   cameraOffsetYM:0.074,
   cameraHFovDeg:65,
+  parallax:0.5,      // 1 = physically exact window; lower = calmer background
+  smoothing:0.15,    // s half-life of the head-motion spring
   irisDiameterM:0.0117
 };
 // Desktop: CSS px ≈ 1/96 inch on most monitors at their OS scale, webcam centered above the top bezel.
@@ -18,6 +20,8 @@ export const DESKTOP={
   cameraOffsetXM:0,
   cameraOffsetYM:screen.height*PX/2+0.01,
   cameraHFovDeg:65,
+  parallax:0.5,      // 1 = physically exact window; lower = calmer background
+  smoothing:0.15,    // s half-life of the head-motion spring
   irisDiameterM:0.0117
 };
 export const isMobile=matchMedia('(pointer: coarse)').matches;

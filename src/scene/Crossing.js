@@ -10,7 +10,7 @@ const TRACK_Z = -11, CYCLE = 42, TRAIN_SPEED = 17; // m, s, m/s
 const SUN_DIR = new THREE.Vector3(-0.45, 0.62, 0.64).normalize(); // high, front-left: lights the face
 
 // Handles the weather system restyles (filled while building)
-export const REFS = { walls: [], roofs: [], leaves: [], windows: [], nightLights: [], redLights: [] };
+export const REFS = { walls: [], roofs: [], leaves: [], windows: [], nightLights: [], redLights: [], lowTrees: [] };
 const mats = new Map();
 function pbr(color, o = {}) {
   const key = color + JSON.stringify(o, (k, v) => (v?.isTexture ? v.uuid : v));
@@ -362,6 +362,7 @@ function townscape(g) {
     }
     t.position.set(x, 0, z);
     g.add(shadows(t));
+    REFS.lowTrees.push(t);
   }
   const hill = pbr('#86c39a', { roughness: 1 });
   for (const [x, z, r] of [[-150, -260, 90], [-20, -300, 120], [140, -270, 100], [260, -230, 80]]) {
