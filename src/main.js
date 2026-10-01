@@ -9,6 +9,7 @@ import { mountChatBar } from './ui/ChatBar.js';
 import { createTestChamber } from './scene/TestChamber.js';
 import { createCrossing } from './scene/Crossing.js';
 import { createPost } from './scene/Post.js';
+import { createWeather } from './scene/Weather.js';
 import { Character, BUILTIN_MOTIONS, IDLE_POSE, DEFAULT_MODEL } from './character/Character.js';
 
 const $=s=>document.querySelector(s),canvas=$('#scene'),video=$('#camera'),status=$('#status'),debugPanel=$('#debugPanel'),calPanel=$('#calibration'),motionSel=$('#motion'),modelSel=$('#modelSel');
@@ -29,15 +30,17 @@ const post=createPost(renderer,scene,camera,outline);window.post=post; // debug
 
 // Background: the railway crossing (default) or the calibration grid room.
 const crossing=createCrossing(renderer);window.crossing=crossing; // debug
-let bg=new URLSearchParams(location.search).get('bg')||'crossing';
+const weather=createWeather({renderer,scene,crossing,post,ambient,key});window.weather=weather;
+let weatherName=new URLSearchParams(location.search).get('weather')||'sunset';
+let bg=new URLSearchParams(location.search).get('bg')||'crossing',weatherSel=null;
 function applyBackground(){
   const on=bg==='crossing'&&!!charHeight;
   crossing.group.visible=on;
   if(chamber)chamber.visible=!on;
   blob.material.opacity=on?0:1; // real sun shadows replace the blob
   if(!on)scene.background=new THREE.Color(0x03050a);
-  if(on){const U=charHeight/1.6;crossing.fit(scene,U);post.setScale(U);ambient.intensity=1.1;key.intensity=0.6}
-  else{crossing.unfit(scene);ambient.intensity=2;key.intensity=2.5}
+  if(on){const U=charHeight/1.6;crossing.fit(scene,U);post.setScale(U);weather.set(weatherName,U).then(n=>{if(weatherSel)weatherSel.value=n})}
+  else{crossing.unfit(scene);post.grade(null);renderer.toneMappingExposure=1;ambient.color.set('#aaaaaa');ambient.intensity=2;key.color.set('#ffffff');key.intensity=2.5;key.position.set(-1,1,1)}
 }
 
 // Scene units per meter. MMD physics breaks on scaled meshes, so instead of shrinking the model
@@ -116,7 +119,9 @@ const bgSel=document.createElement('select');bgSel.innerHTML='<option value="cro
 bgSel.onchange=()=>{bg=bgSel.value;applyBackground()};
 const bellBtn=document.createElement('button');bellBtn.type='button';bellBtn.textContent='🔔 off';let bellOn=false;
 bellBtn.onclick=()=>{bellOn=!bellOn;crossing.setSound(bellOn);bellBtn.textContent=bellOn?'🔔 on':'🔔 off'};
-resetBtn.after(bgSel,bellBtn);
+weatherSel=document.createElement('select');weatherSel.innerHTML=weather.list().map(([k,l])=>`<option value="${k}">${l}</option>`).join('');weatherSel.value=weatherName;
+weatherSel.onchange=()=>{weatherName=weatherSel.value;if(bg==='crossing')weather.set(weatherName,charHeight/1.6)};
+resetBtn.after(bgSel,weatherSel,bellBtn);
 genBox.onsubmit=async(e)=>{
   e.preventDefault();
   const [inp,sec]=genBox.querySelectorAll('input,select'),btn=genBox.querySelector('button'),prompt=inp.value.trim();
@@ -198,6 +203,6 @@ function frame(){
   const vp=viewport();spatial.update({x:(eye.x-vp.ox)*K,y:(eye.y-vp.oy)*K,z:eye.z*K});
   if(character){character.lookTarget=camera.position;character.update(dt);const c=character.bones['センター'].getWorldPosition(blob.position);stage.worldToLocal(c);c.y=.01}
   debugPanel.textContent=`filtered eye (m)\nx ${eye.x.toFixed(3)}\ny ${eye.y.toFixed(3)}\nz ${eye.z.toFixed(3)}\n\nraw z ${rawEye.z.toFixed(3)}\nHFOV ${calibration.data.cameraHFovDeg.toFixed(1)}°\nK ${K.toFixed(1)}`;
-  crossing.tick(clock.elapsedTime,dt);
+  crossing.tick(clock.elapsedTime,dt);weather.tick(clock.elapsedTime,dt);
   post.render();requestAnimationFrame(frame)
 }frame();

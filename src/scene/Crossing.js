@@ -9,6 +9,8 @@ import { Lensflare, LensflareElement } from 'three/addons/objects/Lensflare.js';
 const TRACK_Z = -11, CYCLE = 42, TRAIN_SPEED = 17; // m, s, m/s
 const SUN_DIR = new THREE.Vector3(-0.45, 0.62, 0.64).normalize(); // high, front-left: lights the face
 
+// Handles the weather system restyles (filled while building)
+export const REFS = { walls: [], roofs: [], leaves: [], windows: [], nightLights: [], redLights: [] };
 const mats = new Map();
 function pbr(color, o = {}) {
   const key = color + JSON.stringify(o, (k, v) => (v?.isTexture ? v.uuid : v));
@@ -115,11 +117,12 @@ export function bakeSky(renderer) {
 // --- ground, road, rails ---------------------------------------------------------------------------
 function ground(g) {
   const grassTex = canvasTex(256, 256, speckle('#86c068', [100, 60], 3500, 2), [120, 120]);
-  g.add(shadows(box(400, 0.1, 400, pbr('#9ad276', { map: grassTex, roughness: 0.95 }), 0, -0.06, -150), false));
+  g.add(REFS.ground = shadows(box(400, 0.1, 400, pbr('#9ad276', { map: grassTex, roughness: 0.95 }), 0, -0.06, -150), false));
   const asphalt = canvasTex(512, 512, speckle('#5f6166', [78, 48], 9000, 1.6), [3, 60]);
   const rough = canvasTex(256, 256, speckle('#d0d0d0', [150, 105], 4000, 2), [3, 60], false);
   const road = new THREE.Mesh(new THREE.PlaneGeometry(6, 180), pbr('#ffffff', { map: asphalt, roughnessMap: rough, roughness: 0.85 }));
   road.rotation.x = -Math.PI / 2; road.position.set(0, 0.002, -89.5); road.receiveShadow = true;
+  REFS.road = road;
   g.add(road);
   const paint = pbr('#f6f8fa', { roughness: 0.55 });
   for (const sx of [-1, 1]) g.add(shadows(box(0.15, 0.012, 180, paint, sx * 2.75, 0.008, -89.5), false));
@@ -167,19 +170,19 @@ function ground(g) {
     tuft.setMatrixAt(i, mx.compose(new THREE.Vector3(x, 0, z), q, s));
   }
   tuft.receiveShadow = true;
-  g.add(tuft);
+  g.add(REFS.tufts = tuft);
 }
 
 function railway(g) {
   const z0 = TRACK_Z;
   const ballast = canvasTex(256, 256, speckle('#a29c92', [110, 90], 7000, 3), [80, 1]);
-  g.add(shadows(box(400, 0.28, 4.2, pbr('#ffffff', { map: ballast, roughness: 1 }), 0, 0.06, z0), false));
+  g.add(REFS.ballast = shadows(box(400, 0.28, 4.2, pbr('#ffffff', { map: ballast, roughness: 1 }), 0, 0.06, z0), false));
   const sleepers = new THREE.InstancedMesh(new THREE.BoxGeometry(0.22, 0.14, 2.4), pbr('#d3cec4', { roughness: 0.9 }), 400);
   const m = new THREE.Matrix4();
   for (let i = 0; i < 400; i++) { m.makeTranslation(-120 + i * 0.6, 0.24, z0); sleepers.setMatrixAt(i, m); }
   sleepers.castShadow = sleepers.receiveShadow = true;
   g.add(sleepers);
-  const rail = pbr('#b9c0c8', { metalness: 1, roughness: 0.28 }), railSide = pbr('#7a6a5c', { metalness: 0.6, roughness: 0.75 });
+  const rail = pbr('#b9c0c8', { metalness: 1, roughness: 0.28 }), railSide = REFS.railSide = pbr('#7a6a5c', { metalness: 0.6, roughness: 0.75 });
   for (const dz of [-0.53, 0.53]) {
     g.add(shadows(box(400, 0.03, 0.07, rail, 0, 0.455, z0 + dz)));       // polished head
     g.add(shadows(box(400, 0.13, 0.045, railSide, 0, 0.375, z0 + dz)));  // rusty web
@@ -325,13 +328,16 @@ function townscape(g) {
   const walls = ['#f5efe2', '#eaf2f4', '#f7e7d6', '#e8eee1', '#f3f0f7'], roofs = ['#3d6f9a', '#2f8f8a', '#b05a43', '#5a6470', '#3f5f8f'];
   let seed = 7; const rnd = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
   const win = canvasTex(64, 64, (c, w, h) => { c.fillStyle = '#9fc7e6'; c.fillRect(0, 0, w, h); c.fillStyle = 'rgba(255,255,255,0.6)'; c.fillRect(6, 6, 18, 52); c.strokeStyle = '#e8edf0'; c.lineWidth = 6; c.strokeRect(0, 0, w, h); c.beginPath(); c.moveTo(w / 2, 0); c.lineTo(w / 2, h); c.stroke(); });
-  const glass = pbr('#ffffff', { map: win, metalness: 0.3, roughness: 0.08 });
+  const glass = pbr('#ffffff', { map: win, metalness: 0.3, roughness: 0.08, emissive: '#ffcf8a', emissiveIntensity: 0 });
+  REFS.windows.push(glass);
   for (const side of [-1, 1]) {
     for (let z = -16; z > -150; z -= 9 + rnd() * 6) {
       const w = 6 + rnd() * 4, d = 6 + rnd() * 3, h = 3 + rnd() * 3.5, x = side * (9 + rnd() * 10);
       const house = new THREE.Group();
-      house.add(box(w, h, d, pbr(walls[(rnd() * 5) | 0], { roughness: 0.75 }), 0, h / 2, 0));
-      const roof = new THREE.Mesh(new THREE.CylinderGeometry(0.01, d * 0.72, 1.8, 4, 1), pbr(roofs[(rnd() * 5) | 0], { roughness: 0.55, metalness: 0.1 }));
+      const wall = pbr(walls[(rnd() * 5) | 0], { roughness: 0.75 }); if (!REFS.walls.includes(wall)) REFS.walls.push(wall);
+      house.add(box(w, h, d, wall, 0, h / 2, 0));
+      const roofMat = pbr(roofs[(rnd() * 5) | 0], { roughness: 0.55, metalness: 0.1 }); if (!REFS.roofs.includes(roofMat)) REFS.roofs.push(roofMat);
+      const roof = new THREE.Mesh(new THREE.CylinderGeometry(0.01, d * 0.72, 1.8, 4, 1), roofMat);
       roof.rotation.y = Math.PI / 4; roof.scale.set(w / d, 1, 1); roof.position.y = h + 0.9;
       house.add(roof);
       for (let i = 0; i < 2; i++) { const wdw = box(1.1, 1.1, 0.05, glass, (i - 0.5) * w * 0.45, h * 0.55, d / 2 + 0.03); house.add(wdw); }
@@ -342,6 +348,7 @@ function townscape(g) {
     }
   }
   const leaf = [pbr('#4fae58', { roughness: 0.85 }), pbr('#3f9a50', { roughness: 0.85 }), pbr('#67bf5f', { roughness: 0.85 })], trunk = pbr('#7a5a3c');
+  REFS.leaves.push(...leaf);
   for (let i = 0; i < 46; i++) {
     const side = i % 2 ? 1 : -1, x = side * (6 + rnd() * 30), z = -14 - rnd() * 130;
     if (Math.abs(z - TRACK_Z) < 4) continue;
@@ -361,6 +368,22 @@ function townscape(g) {
     const h = new THREE.Mesh(new THREE.SphereGeometry(r, 32, 12, 0, Math.PI * 2, 0, Math.PI / 2), hill);
     h.scale.y = 0.35; h.position.set(x, -2, z); g.add(h);
   }
+}
+
+// --- night lighting: street lamps + light spill (off unless the weather turns them on) ---------------
+function streetLamp(g, x, z, rotY) {
+  const l = new THREE.Group(); l.position.set(x, 0, z); l.rotation.y = rotY;
+  const metal = pbr('#9aa2aa', { metalness: 0.7, roughness: 0.4 });
+  l.add(shadows(cyl(0.07, 5.6, metal, 0, 2.8, 0, 10, 0.09)));
+  const arm = shadows(cyl(0.04, 1.4, metal, 0.6, 5.55, 0, 8)); arm.rotation.z = Math.PI / 2 - 0.25; l.add(arm);
+  l.add(shadows(box(0.55, 0.12, 0.25, pbr('#c9ced3', { metalness: 0.5, roughness: 0.4 }), 1.25, 5.62, 0)));
+  const bulbMat = new THREE.MeshStandardMaterial({ color: '#ffffff', emissive: '#ffd9a0', emissiveIntensity: 0 });
+  l.add(box(0.45, 0.03, 0.18, bulbMat, 1.25, 5.55, 0));
+  const light = new THREE.SpotLight('#ffcf8a', 0, 26, 1.05, 0.55, 1.6);
+  light.position.set(1.25, 5.5, 0); light.target.position.set(1.4, 0, 0);
+  l.add(light, light.target);
+  g.add(l);
+  REFS.nightLights.push({ light, mat: bulbMat, power: 60 });
 }
 
 // --- train ---------------------------------------------------------------------------------------------
@@ -409,6 +432,15 @@ export function createCrossing(renderer) {
   curveMirror(g, 3.6, -7.6, -0.6);
   busStop(g, -3.4, -4.6);
   townscape(g);
+  streetLamp(g, -3.9, -15.5, 0);
+  streetLamp(g, 3.9, -0.6, Math.PI);
+  { // vending machine spill + red spill from the flashing signals
+    const vm = new THREE.PointLight('#d8ecff', 0, 7, 1.8); vm.position.set(3.5, 1.1, -2.8); g.add(vm);
+    REFS.nightLights.push({ light: vm, power: 6 });
+    for (const [x, z] of [[-3.5, TRACK_Z + 2.4], [3.5, TRACK_Z - 2.4]]) {
+      const r = new THREE.PointLight('#ff2a1a', 0, 9, 1.6); r.position.set(x, 2.4, z); g.add(r); REFS.redLights.push(r);
+    }
+  }
   const tr = train(g, glows);
   // Blue Archive look: ink outlines on the character only, never on the background
   g.traverse((o) => { if (o.material) noOutline(o); });
@@ -423,7 +455,7 @@ export function createCrossing(renderer) {
   g.add(sun, target);
   const flareTex = (r, a, inner = 0) => canvasTex(128, 128, (c, w) => { const gr = c.createRadialGradient(w / 2, w / 2, inner, w / 2, w / 2, w / 2); gr.addColorStop(0, `rgba(255,250,235,${a})`); gr.addColorStop(r, `rgba(255,240,210,${a * 0.4})`); gr.addColorStop(1, 'rgba(255,240,210,0)'); c.fillStyle = gr; c.fillRect(0, 0, w, w); });
   const flare = new Lensflare();
-  flare.addElement(new LensflareElement(flareTex(0.25, 1), 380, 0));
+  flare.addElement(new LensflareElement(flareTex(0.25, 0.8), 170, 0));
   flare.addElement(new LensflareElement(flareTex(0.6, 0.35, 30), 90, 0.5, new THREE.Color('#9fd8ff')));
   flare.addElement(new LensflareElement(flareTex(0.6, 0.3, 20), 140, 0.75, new THREE.Color('#ffd2f0')));
   flare.addElement(new LensflareElement(flareTex(0.6, 0.25, 10), 60, 1.0, new THREE.Color('#b8ffcf')));
@@ -441,19 +473,21 @@ export function createCrossing(renderer) {
   };
 
   return {
-    group: g,
+    group: g, sun, flareHolder, glows, lamps,
     // units per meter of the character world, so lights/shadows/fog can be sized in model units
     fit(scene, U) {
       g.scale.setScalar(U);
+      sun.color.set('#fff1d6'); sun.intensity = 3.6;
       sun.position.copy(SUN_DIR).multiplyScalar(60).add(target.position);
       const cam = sun.shadow.camera;
       cam.left = cam.bottom = -22 * U; cam.right = cam.top = 22 * U; cam.near = 1 * U; cam.far = 140 * U;
       cam.updateProjectionMatrix();
       flareHolder.position.copy(SUN_DIR).multiplyScalar(300);
       scene.fog = new THREE.Fog('#d6efff', 40 * U, 330 * U);
-      scene.environment ??= bakeEnvironment(renderer);
+      scene.environment = this.styEnv ??= bakeEnvironment(renderer);
       scene.background = this.sky ??= bakeSky(renderer);
-      scene.environmentIntensity = 0.45;
+      scene.backgroundRotation.set(0, 0, 0); scene.environmentRotation.set(0, 0, 0);
+      scene.backgroundIntensity = 1; scene.environmentIntensity = 0.45;
     },
     unfit(scene) { scene.fog = null; scene.environment = null; scene.background = null; },
     setSound(on) {
@@ -471,6 +505,7 @@ export function createCrossing(renderer) {
       for (const a of arms) a.rotation.z = bar;
       const beat = Math.floor(t * 2.2);
       for (let i = 0; i < lamps.length; i++) lamps[i].emissiveIntensity = active && (beat + i) % 2 ? 6 : 0;
+      for (let i = 0; i < REFS.redLights.length; i++) REFS.redLights[i].intensity = active && (beat + i) % 2 ? this.redPower ?? 0 : 0;
       if (audio && active && beat !== lastBeat) bell(audio, audio.currentTime);
       lastBeat = beat;
     },

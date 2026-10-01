@@ -1,0 +1,232 @@
+// Weather / time-of-day presets for the crossing: Poly Haven HDRI sky (background + IBL) with the sun
+// light aligned to the sun in the photo, PBR textures, wet asphalt with real planar reflections,
+// falling snow, night lights, and a per-preset colour grade. Assets come from
+// scripts/get-polyhaven.py (CC0); without them only the stylised 'anime' preset works.
+import * as THREE from 'three';
+import { RGBELoader } from 'three/addons/loaders/RGBELoader.js';
+import { Reflector } from 'three/addons/objects/Reflector.js';
+import { REFS } from './Crossing.js';
+
+const PH = 'assets/polyhaven/';
+const deg = THREE.MathUtils.degToRad;
+// az: where the sun should sit, degrees around the character (0 = toward the viewer, 90 = viewer's
+// right, 180 = behind her). char: lights that only the toon character really feels.
+export const WEATHERS = {
+  anime: { label: '애니 맑음' },
+  day: {
+    label: '맑음', hdri: 'day', az: 305, env: 0.85, bg: 1, exposure: 1, sun: ['#fff3df', 3.4], fog: ['#d8e2ea', 80, 480],
+    char: { amb: ['#b4b4b4', 1.1], key: ['#ffffff', 0.7] }, grade: { tint: [1, 1, 1], sat: 1.06, contrast: 1.03, sepia: 0, vignette: 0.12 }, bloom: 0.3,
+  },
+  sunset: {
+    label: '노을', hdri: 'sunset', az: 228, minElev: 6, env: 0.8, bg: 0.6, exposure: 0.85, sun: ['#ffa458', 3.0], fog: ['#d9946c', 60, 380],
+    char: { amb: ['#d9a98c', 0.85], key: ['#ffc58c', 0.8] }, grade: { tint: [1.05, 0.98, 0.9], sat: 1.0, contrast: 1.1, sepia: 0.11, vignette: 0.38 }, bloom: 0.3, flare: true,
+  },
+  rain: {
+    label: '비 온 뒤', hdri: 'rain', az: 300, env: 1.15, bg: 1, exposure: 0.95, sun: ['#e4ecf4', 0.6], fog: ['#b4bfc8', 22, 230],
+    char: { amb: ['#b9c5ce', 1.35], key: ['#e8f0ff', 0.45] }, grade: { tint: [0.96, 1, 1.03], sat: 0.84, contrast: 1.08, sepia: 0, vignette: 0.32 }, bloom: 0.35, wet: 1, flare: false,
+  },
+  snow: {
+    label: '눈', hdri: 'snow', az: 300, env: 1.2, bg: 1, exposure: 1, sun: ['#f1f5ff', 0.8], fog: ['#e6edf4', 16, 170],
+    char: { amb: ['#c9d5e3', 1.35], key: ['#f4f8ff', 0.55] }, grade: { tint: [0.95, 0.99, 1.06], sat: 0.86, contrast: 1.02, sepia: 0, vignette: 0.26 }, bloom: 0.35, snow: 1, flare: false,
+  },
+  night: {
+    label: '밤', hdri: 'night', az: 120, minElev: 25, env: 0.35, bg: 0.75, exposure: 1.25, sun: ['#9fb3ff', 0.35], fog: ['#141c2e', 20, 260],
+    char: { amb: ['#8e9cc8', 0.75], key: ['#ffd2a0', 0.75] }, grade: { tint: [0.92, 0.96, 1.1], sat: 0.95, contrast: 1.08, sepia: 0, vignette: 0.45 }, bloom: 0.9, night: 1, flare: false,
+  },
+};
+
+// --- HDRI sky: load, find the sun in the photo ---------------------------------------------------------
+const skies = {};
+async function loadSky(renderer, name) {
+  if (skies[name]) return skies[name];
+  const tex = await new RGBELoader().loadAsync(`${PH}hdri/${name}.hdr`);
+  tex.mapping = THREE.EquirectangularReflectionMapping;
+  const { width: w, height: h, data } = tex.image;
+  const f = data instanceof Uint16Array ? THREE.DataUtils.fromHalfFloat : (x) => x;
+  let best = -1, bi = 0;
+  for (let i = 0; i < w * h; i += 2) {
+    const L = 0.2126 * f(data[i * 4]) + 0.7152 * f(data[i * 4 + 1]) + 0.0722 * f(data[i * 4 + 2]);
+    if (L > best) { best = L; bi = i; }
+  }
+  // three's equirect lookup: u = atan(z, x) / 2π + 0.5, v = asin(y) / π + 0.5 (rows flipped on upload)
+  const u = ((bi % w) + 0.5) / w, v = 1 - (((bi / w) | 0) + 0.5) / h;
+  const phi = (u - 0.5) * Math.PI * 2, theta = (v - 0.5) * Math.PI;
+  const sun = new THREE.Vector3(Math.cos(theta) * Math.cos(phi), Math.sin(theta), Math.cos(theta) * Math.sin(phi));
+  const pm = new THREE.PMREMGenerator(renderer);
+  const env = pm.fromEquirectangular(tex).texture;
+  pm.dispose();
+  return (skies[name] = { tex, env, sun });
+}
+
+// --- PBR textures (applied once if present) ------------------------------------------------------------
+const loader = new THREE.TextureLoader();
+function pbrSet(asset, repeat) {
+  const t = (m, srgb) => {
+    const x = loader.load(`${PH}tex/${asset}/${m}.jpg`);
+    x.wrapS = x.wrapT = THREE.RepeatWrapping; x.repeat.set(...repeat); x.anisotropy = 8;
+    if (srgb) x.colorSpace = THREE.SRGBColorSpace;
+    return x;
+  };
+  return { map: t('diff', true), normalMap: t('nor_gl'), roughnessMap: t('rough') };
+}
+function applyTextures() {
+  const set = (mat, tex, extra = {}) => { Object.assign(mat, tex, extra); mat.needsUpdate = true; };
+  set(REFS.road.material, pbrSet('asphalt_02', [2, 60]), { roughness: 1, color: new THREE.Color('#d8d8d8') });
+  set(REFS.ground.material, pbrSet('sparse_grass', [90, 90]), { roughness: 1, color: new THREE.Color('#b8dc9a') });
+  set(REFS.ballast.material, pbrSet('sandy_gravel_02', [110, 1.2]), { roughness: 1, color: new THREE.Color('#d6d0c6') });
+  set(REFS.railSide, pbrSet('rusty_metal_02', [120, 1]), { color: new THREE.Color('#ffffff') });
+  const plaster = pbrSet('white_plaster_02', [2, 1]), tiles = pbrSet('grey_roof_tiles_02', [4, 2]);
+  for (const m of REFS.walls) set(m, plaster, { roughness: 1 });
+  for (const m of REFS.roofs) set(m, tiles, { roughness: 1 });
+  // remember dry looks so weather can restore them
+  for (const m of [REFS.road.material, REFS.ground.material, REFS.ballast.material, ...REFS.roofs, ...REFS.leaves])
+    m.userData.dry = { color: m.color.clone(), map: m.map, normalMap: m.normalMap, roughnessMap: m.roughnessMap, roughness: m.roughness };
+}
+
+// --- wet asphalt: planar reflection mixed with the asphalt, puddles reflect more ----------------------
+function wetRoad() {
+  const mask = (() => {
+    const c = document.createElement('canvas'); c.width = 128; c.height = 1024;
+    const x = c.getContext('2d'); x.fillStyle = '#000'; x.fillRect(0, 0, 128, 1024);
+    for (let i = 0; i < 260; i++) {
+      const cx = Math.random() * 128, cy = Math.random() * 1024, r = 4 + Math.random() * 16;
+      const g = x.createRadialGradient(cx, cy, 0, cx, cy, r);
+      g.addColorStop(0, `rgba(255,${(Math.random() * 255) | 0},${(Math.random() * 255) | 0},1)`); g.addColorStop(1, 'rgba(0,128,128,0)');
+      x.fillStyle = g; x.beginPath(); x.ellipse(cx, cy, r * 1.4, r, Math.random() * 3, 0, 7); x.fill();
+    }
+    const t = new THREE.CanvasTexture(c); t.wrapS = t.wrapT = THREE.RepeatWrapping; return t;
+  })();
+  const r = new Reflector(new THREE.PlaneGeometry(6, 180), {
+    textureWidth: Math.min(2048, innerWidth), textureHeight: Math.min(2048, innerHeight), clipBias: 0.002,
+    shader: {
+      uniforms: {
+        color: { value: new THREE.Color(1, 1, 1) }, tDiffuse: { value: null }, textureMatrix: { value: null },
+        tMap: { value: REFS.road.material.map }, tMask: { value: mask }, ambient: { value: new THREE.Color(0.55, 0.58, 0.62) },
+        repeat: { value: new THREE.Vector2(2, 60) },
+      },
+      vertexShader: /* glsl */`
+        uniform mat4 textureMatrix; varying vec4 vUvR; varying vec2 vUv; varying vec3 vWorld;
+        void main() { vUv = uv; vUvR = textureMatrix * vec4(position, 1.0); vec4 w = modelMatrix * vec4(position, 1.0); vWorld = w.xyz; gl_Position = projectionMatrix * viewMatrix * w; }`,
+      fragmentShader: /* glsl */`
+        uniform sampler2D tDiffuse, tMap, tMask; uniform vec3 ambient; uniform vec2 repeat;
+        varying vec4 vUvR; varying vec2 vUv; varying vec3 vWorld;
+        void main() {
+          vec3 base = texture2D(tMap, vUv * repeat).rgb;
+          vec4 m = texture2D(tMask, vUv * vec2(1.0, 28.0));
+          float puddle = smoothstep(0.35, 0.75, m.r);
+          vec4 uvr = vUvR; uvr.xy += (m.gb - 0.5) * 0.012 * (1.0 - puddle) * uvr.w; // rough film blurs, puddles stay sharp
+          vec3 refl = texture2DProj(tDiffuse, uvr).rgb;
+          vec3 V = normalize(cameraPosition - vWorld);
+          float fres = 0.05 + 0.95 * pow(1.0 - max(V.y, 0.0), 5.0);
+          float k = clamp(mix(0.28, 0.95, puddle) * mix(fres, 1.0, puddle * 0.7) + 0.18, 0.0, 1.0);
+          gl_FragColor = vec4(mix(base * ambient * 0.55, refl, k), 1.0);
+        }`,
+    },
+  });
+  r.material.userData.outlineParameters = { visible: false };
+  r.rotation.x = -Math.PI / 2;
+  r.position.copy(REFS.road.position).setY(0.006);
+  return r;
+}
+
+// --- snow: falling flakes + a white cover ------------------------------------------------------------
+function snowfall() {
+  const N = 9000, pos = new Float32Array(N * 3), speed = new Float32Array(N);
+  for (let i = 0; i < N; i++) { pos[i * 3] = (Math.random() - 0.5) * 30; pos[i * 3 + 1] = Math.random() * 14; pos[i * 3 + 2] = 1.5 - Math.random() * 34; speed[i] = 0.6 + Math.random() * 0.8; }
+  const geo = new THREE.BufferGeometry(); geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+  const dot = (() => { const c = document.createElement('canvas'); c.width = c.height = 32; const x = c.getContext('2d'); const g = x.createRadialGradient(16, 16, 0, 16, 16, 16); g.addColorStop(0, 'rgba(255,255,255,1)'); g.addColorStop(0.5, 'rgba(255,255,255,0.7)'); g.addColorStop(1, 'rgba(255,255,255,0)'); x.fillStyle = g; x.fillRect(0, 0, 32, 32); return new THREE.CanvasTexture(c); })();
+  const pts = new THREE.Points(geo, new THREE.PointsMaterial({ map: dot, size: 0.07, transparent: true, depthWrite: false, color: '#ffffff' }));
+  pts.material.userData.outlineParameters = { visible: false };
+  pts.frustumCulled = false;
+  pts.userData.tick = (t, dt) => {
+    for (let i = 0; i < N; i++) {
+      pos[i * 3 + 1] -= speed[i] * dt;
+      pos[i * 3] += Math.sin(t * 0.8 + i) * 0.15 * dt;
+      if (pos[i * 3 + 1] < 0) pos[i * 3 + 1] += 14;
+    }
+    geo.attributes.position.needsUpdate = true;
+  };
+  return pts;
+}
+
+// --------------------------------------------------------------------------------------------------------
+export function createWeather({ renderer, scene, crossing, post, ambient, key }) {
+  let hasAssets = null, current = 'anime', reflector = null, snow = null, U = 1;
+  const snowCover = (() => { const set = pbrSet('snow_02', [90, 90]); return set; });
+  let snowTex = null;
+  const restoreDry = () => {
+    for (const m of [REFS.road.material, REFS.ground.material, REFS.ballast.material, ...REFS.roofs, ...REFS.leaves]) {
+      const d = m.userData.dry; if (!d) continue;
+      Object.assign(m, { map: d.map, normalMap: d.normalMap, roughnessMap: d.roughnessMap, roughness: d.roughness }); m.color.copy(d.color); m.needsUpdate = true;
+    }
+  };
+  return {
+    list: () => Object.entries(WEATHERS).map(([k, v]) => [k, v.label]),
+    get current() { return current; },
+    tick(t, dt) { snow?.visible && snow.userData.tick(t, dt); },
+    async set(name, unitsPerMeter) {
+      U = unitsPerMeter ?? U;
+      hasAssets ??= await fetch(`${PH}hdri/day.hdr`, { method: 'HEAD' }).then((r) => r.ok, () => false);
+      if (hasAssets && !REFS.road.material.userData.dry) applyTextures();
+      const w = WEATHERS[name]?.hdri && hasAssets ? WEATHERS[name] : WEATHERS.anime;
+      current = w === WEATHERS.anime ? 'anime' : name;
+      restoreDry();
+      if (!w.hdri) { // stylised sky from Crossing.fit
+        crossing.fit(scene, U, { force: true });
+        renderer.toneMappingExposure = 1; post.grade(null); post.bloom.strength = 0.35;
+        ambient.color.set('#aaaaaa'); ambient.intensity = 1.1; key.color.set('#ffffff'); key.intensity = 0.6;
+        crossing.flareHolder.visible = true; crossing.redPower = 0;
+        for (const n of REFS.nightLights) { n.light.intensity = 0; if (n.mat) n.mat.emissiveIntensity = 0; }
+        if (reflector) reflector.visible = false; REFS.road.visible = true; if (snow) snow.visible = false; REFS.tufts.visible = true;
+        return current;
+      }
+      const sky = await loadSky(renderer, w.hdri);
+      // rotate the photo so its sun sits at the preset's azimuth; the light uses the same direction
+      const az0 = Math.atan2(sky.sun.x, sky.sun.z), a = deg(w.az) - az0;
+      scene.background = sky.tex; scene.environment = sky.env;
+      scene.backgroundRotation.set(0, a, 0); scene.environmentRotation.set(0, a, 0);
+      scene.backgroundIntensity = w.bg; scene.environmentIntensity = w.env;
+      const dir = sky.sun.clone().applyAxisAngle(new THREE.Vector3(0, 1, 0), a);
+      const minElev = deg(w.minElev ?? 4);
+      if (Math.asin(dir.y) < minElev) { const hor = Math.hypot(dir.x, dir.z); dir.set((dir.x / hor) * Math.cos(minElev), Math.sin(minElev), (dir.z / hor) * Math.cos(minElev)); }
+      const sun = crossing.sun;
+      sun.color.set(w.sun[0]); sun.intensity = w.sun[1];
+      sun.position.copy(dir).multiplyScalar(60).add(sun.target.position);
+      crossing.flareHolder.position.copy(dir).multiplyScalar(300);
+      crossing.flareHolder.visible = !!w.flare || name === 'day';
+      scene.fog = new THREE.Fog(w.fog[0], w.fog[1] * U, w.fog[2] * U);
+      renderer.toneMappingExposure = w.exposure;
+      ambient.color.set(w.char.amb[0]); ambient.intensity = w.char.amb[1];
+      key.color.set(w.char.key[0]); key.intensity = w.char.key[1];
+      key.position.copy(dir.x > 0 ? new THREE.Vector3(1, 1, 1) : new THREE.Vector3(-1, 1, 1)); // always from the viewer's side
+      post.grade(w.grade); post.bloom.strength = w.bloom;
+
+      // wet road
+      if (w.wet) { if (!reflector) { reflector = wetRoad(); REFS.road.parent.add(reflector); } reflector.visible = true; REFS.road.visible = false; for (const m of REFS.leaves) m.color.multiplyScalar(0.85); REFS.ballast.material.color.multiplyScalar(0.7); }
+      else { if (reflector) reflector.visible = false; REFS.road.visible = true; }
+      // snow cover + flakes
+      if (w.snow) {
+        snowTex ??= snowCover();
+        Object.assign(REFS.ground.material, snowTex, { roughness: 1 }); REFS.ground.material.color.set('#ffffff'); REFS.ground.material.needsUpdate = true;
+        for (const m of REFS.roofs) { Object.assign(m, snowTex); m.color.set('#f4f7fb'); m.needsUpdate = true; }
+        for (const m of REFS.leaves) m.color.lerp(new THREE.Color('#eef3f7'), 0.55);
+        REFS.road.material.color.set('#eceff2'); REFS.ballast.material.color.lerp(new THREE.Color('#ffffff'), 0.6);
+        REFS.tufts.visible = false;
+        if (!snow) { snow = snowfall(); REFS.road.parent.add(snow); }
+        snow.material.size = 0.14 * U; snow.visible = true;
+      } else { REFS.tufts.visible = true; if (snow) snow.visible = false; }
+      // night lights
+      const night = !!w.night;
+      for (const n of REFS.nightLights) {
+        n.light.distance = (n.light.userData.d ??= n.light.distance) * U;
+        n.light.intensity = night ? n.power * U ** n.light.decay : 0;
+        if (n.mat) n.mat.emissiveIntensity = night ? 4 : 0;
+      }
+      for (const r of REFS.redLights) r.distance = (r.userData.d ??= r.distance) * U;
+      crossing.redPower = (night ? 40 : name === 'rain' || name === 'sunset' ? 12 : 0) * U ** 1.6;
+      for (const m of REFS.windows) m.emissiveIntensity = night ? 1.6 : name === 'sunset' ? 0.25 : 0;
+      crossing.glows[0].emissiveIntensity = night ? 2.2 : 0.9; // vending panel (the rest are train lights)
+      return current;
+    },
+  };
+}
