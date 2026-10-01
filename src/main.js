@@ -7,21 +7,38 @@ import { Calibration, isMobile } from './calibration/Calibration.js';
 import { bindCalibrationPanel } from './ui/CalibrationPanel.js';
 import { mountChatBar } from './ui/ChatBar.js';
 import { createTestChamber } from './scene/TestChamber.js';
+import { createCrossing } from './scene/Crossing.js';
+import { createPost } from './scene/Post.js';
 import { Character, BUILTIN_MOTIONS, IDLE_POSE, DEFAULT_MODEL } from './character/Character.js';
 
 const $=s=>document.querySelector(s),canvas=$('#scene'),video=$('#camera'),status=$('#status'),debugPanel=$('#debugPanel'),calPanel=$('#calibration'),motionSel=$('#motion'),modelSel=$('#modelSel');
 const calibration=new Calibration();
-const renderer=new THREE.WebGLRenderer({canvas,antialias:true});renderer.setPixelRatio(Math.min(devicePixelRatio,2));renderer.shadowMap.enabled=true;
+const renderer=new THREE.WebGLRenderer({canvas,antialias:true});renderer.setPixelRatio(Math.min(devicePixelRatio,2));renderer.shadowMap.enabled=true;renderer.shadowMap.type=THREE.PCFSoftShadowMap;
+renderer.toneMapping=THREE.NeutralToneMapping;renderer.toneMappingExposure=1; // applied by the post chain's OutputPass
 const scene=new THREE.Scene();scene.background=new THREE.Color(0x03050a);
-const camera=new THREE.PerspectiveCamera(45,1,.01,5000),spatial=new OffAxisCamera(camera,{far:5000});
+const camera=new THREE.PerspectiveCamera(45,1,.01,30000),spatial=new OffAxisCamera(camera,{far:30000});
 let eye={x:0,y:0,z:isMobile?.42:.6},rawEye={...eye};
 window.setEye=p=>{eye={...eye,...p}}; // debug: fake a viewer position (meters) without the camera
 
 // three.js MMD example lighting, a bit dimmer (3/3 blew out skin on Sour-style models).
-scene.add(new THREE.AmbientLight(0xaaaaaa,2));
+const ambient=new THREE.AmbientLight(0xaaaaaa,2);scene.add(ambient);
 const key=new THREE.DirectionalLight(0xffffff,2.5);key.position.set(-1,1,1);scene.add(key);
 const outline=new OutlineEffect(renderer); // MMD's ink lines; most of the "MMD look"
 window.outline=true;window.scene=scene; // debug
+const post=createPost(renderer,scene,camera,outline);window.post=post; // debug
+
+// Background: the railway crossing (default) or the calibration grid room.
+const crossing=createCrossing(renderer);window.crossing=crossing; // debug
+let bg=new URLSearchParams(location.search).get('bg')||'crossing';
+function applyBackground(){
+  const on=bg==='crossing'&&!!charHeight;
+  crossing.group.visible=on;
+  if(chamber)chamber.visible=!on;
+  blob.material.opacity=on?0:1; // real sun shadows replace the blob
+  if(!on)scene.background=new THREE.Color(0x03050a);
+  if(on){const U=charHeight/1.6;crossing.fit(scene,U);post.setScale(U);ambient.intensity=1.1;key.intensity=0.6}
+  else{crossing.unfit(scene);ambient.intensity=2;key.intensity=2.5}
+}
 
 // Scene units per meter. MMD physics breaks on scaled meshes, so instead of shrinking the model
 // we grow the screen/eye/room by K. Generic (glTF/FBX) models use K=1 and get scaled themselves.
@@ -55,6 +72,7 @@ function layout(){
   if(chamber)scene.remove(chamber);
   const v=viewport(),depth=roomDepth(v)*K;
   chamber=createTestChamber(scene,{width:d.screenWidthM,height:d.screenHeightM,depth,step:Math.max(.01,v.w/12)*K});
+  chamber.visible=!(bg==='crossing'&&charHeight);
   stage.position.set(0,-d.screenHeightM/2,-standZ(v)*K);
   if(current)ModelLoader.place(current,d.screenWidthM,d.screenHeightM,depth);
   character?.resetPhysics();
@@ -69,6 +87,7 @@ async function loadCharacter(url,manager){
   const h=new THREE.Box3().setFromObject(mesh).getSize(new THREE.Vector3()).y;
   charHeight=h;
   stage.add(mesh);blob.scale.set(h*.45,h*.3,1);blob.visible=true;layout();
+  mesh.castShadow=true;if(!crossing.group.parent)stage.add(crossing.group);applyBackground();
   motionSel.innerHTML=['idle',...Object.keys(BUILTIN_MOTIONS).filter(n=>n!==IDLE_POSE)].map(n=>`<option>${n}</option>`).join('');
   // Library: every clip the director loaded (idle stands, fidgets, gestures), for previewing one by one.
   c.directorReady.then(()=>{
@@ -93,6 +112,11 @@ document.getElementById('hud').after(genBox);
 const resetBtn=document.createElement('button');resetBtn.textContent='Reset pose';resetBtn.type='button';
 resetBtn.onclick=()=>{if(!character)return;character.reset();character.idle=true;character.director.enabled=true;motionSel.value='idle';status.textContent='reset'};
 motionSel.after(resetBtn);
+const bgSel=document.createElement('select');bgSel.innerHTML='<option value="crossing">踏切</option><option value="grid">grid</option>';bgSel.value=bg;
+bgSel.onchange=()=>{bg=bgSel.value;applyBackground()};
+const bellBtn=document.createElement('button');bellBtn.type='button';bellBtn.textContent='🔔 off';let bellOn=false;
+bellBtn.onclick=()=>{bellOn=!bellOn;crossing.setSound(bellOn);bellBtn.textContent=bellOn?'🔔 on':'🔔 off'};
+resetBtn.after(bgSel,bellBtn);
 genBox.onsubmit=async(e)=>{
   e.preventDefault();
   const [inp,sec]=genBox.querySelectorAll('input,select'),btn=genBox.querySelector('button'),prompt=inp.value.trim();
@@ -149,7 +173,7 @@ $('#debug').onclick=()=>debugPanel.classList.toggle('hidden');
 bindCalibrationPanel(calPanel,calibration,layout);
 window.chat=mountChatBar(()=>character?.behavior);
 
-function resize(){renderer.setSize(innerWidth,innerHeight,false);layout()}addEventListener('resize',resize);addEventListener('fullscreenchange',resize);resize();
+function resize(){renderer.setSize(innerWidth,innerHeight,false);post.setSize(innerWidth,innerHeight,renderer.getPixelRatio());layout()}addEventListener('resize',resize);addEventListener('fullscreenchange',resize);resize();
 // Local models live in assets/ (gitignored, MMD licenses forbid redistribution). The first one that exists
 // is the default; without assets/ (e.g. GitHub Pages) the three.js sample Miku is used.
 const MODELS=[
@@ -174,5 +198,6 @@ function frame(){
   const vp=viewport();spatial.update({x:(eye.x-vp.ox)*K,y:(eye.y-vp.oy)*K,z:eye.z*K});
   if(character){character.lookTarget=camera.position;character.update(dt);const c=character.bones['センター'].getWorldPosition(blob.position);stage.worldToLocal(c);c.y=.01}
   debugPanel.textContent=`filtered eye (m)\nx ${eye.x.toFixed(3)}\ny ${eye.y.toFixed(3)}\nz ${eye.z.toFixed(3)}\n\nraw z ${rawEye.z.toFixed(3)}\nHFOV ${calibration.data.cameraHFovDeg.toFixed(1)}°\nK ${K.toFixed(1)}`;
-  (window.outline?outline:renderer).render(scene,camera);requestAnimationFrame(frame)
+  crossing.tick(clock.elapsedTime,dt);
+  post.render();requestAnimationFrame(frame)
 }frame();
