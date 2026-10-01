@@ -28,6 +28,12 @@ MMD 에셋은 이 레포에 포함하지 않고 three.js r170 원본 위치에�
 - wavefile 모션: 원본 재배포 금지, 성인물 금지.
 상업적 사용이나 다른 캐릭터로 바꾸려면 해당 에셋의 readme를 따로 확인할 것.
 
+## 배경
+- `src/scene/Crossing.js`: 블루아카풍 일본 건널목(踏切). 절차적으로 생성, 약 42초마다 전철이 지나가며
+  경보등·차단봉·경보음(🔔 버튼)이 연동된다. 하늘은 큐브맵 배경 + 환경광(IBL)으로 굽고, 태양 그림자와 렌즈 플레어.
+- `src/scene/Post.js`: 외곽선 렌더 → GTAO → 블룸 → 톤매핑 → SMAA. 외곽선은 캐릭터에만.
+- 상단 선택으로 踏切/grid 전환, 또는 `?bg=grid`.
+
 ## 전신 모션
 - `src/character/Motions.js`: 대화 상태별 모션캡처 클립 자동 재생. 대기 루프 위에 제스처를 크로스페이드한다.
 - Mixamo FBX → `assets/motions/`에 넣고 `bash scripts/fbx2vmd.sh` (reze-rig, MIT).

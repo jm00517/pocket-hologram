@@ -461,14 +461,12 @@ export function createCrossing(renderer) {
       if (!on && audio) { audio.close(); audio = null; }
     },
     tick(t, dt) {
-      this.t = t;
       // train schedule: enters from the viewer's left every CYCLE s; warning starts ~5 s before it reaches
       // the road and ends once the tail has cleared it
       const ph = t % CYCLE;
       tr.position.x = -300 + ph * TRAIN_SPEED;
       const head = tr.position.x + 50.8, tail = tr.position.x - 10.1;
       const active = head > -5 * TRAIN_SPEED && tail < 8;
-      this.debug = { ph, x: tr.position.x, active, bar };
       bar += ((active ? 0 : 1.45) - bar) * (1 - Math.exp(-dt * (active ? 2.2 : 1.4)));
       for (const a of arms) a.rotation.z = bar;
       const beat = Math.floor(t * 2.2);
