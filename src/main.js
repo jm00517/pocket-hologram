@@ -70,6 +70,12 @@ async function loadCharacter(url,manager){
   charHeight=h;
   stage.add(mesh);blob.scale.set(h*.45,h*.3,1);blob.visible=true;layout();
   motionSel.innerHTML=['idle',...Object.keys(BUILTIN_MOTIONS).filter(n=>n!==IDLE_POSE)].map(n=>`<option>${n}</option>`).join('');
+  // Library: every clip the director loaded (idle stands, fidgets, gestures), for previewing one by one.
+  c.directorReady.then(()=>{
+    const g=document.createElement('optgroup');g.label='library';
+    for(const n of [...c.director.have].sort())g.append(new Option(n,'lib:'+n));
+    if(g.children.length)motionSel.insertBefore(g,motionSel.querySelector('optgroup'));
+  });
   // Generated clips (scripts/gen-motions.sh writes the index); loaded lazily on selection.
   fetch('assets/motions/gen/vmd/index.json').then(r=>r.ok?r.json():[]).then(names=>{
     if(!names.length)return;
@@ -107,9 +113,9 @@ genBox.onsubmit=async(e)=>{
 motionSel.onchange=async()=>{
   const n=motionSel.value;status.textContent=`loading ${n}...`;
   try{
-    character.idle=n==='idle'||n.startsWith('pose')||n.startsWith('gen:');character.director.enabled=n==='idle';
+    character.idle=n==='idle'||n.startsWith('pose')||n.startsWith('gen:')||n.startsWith('lib:');character.director.enabled=n==='idle';
     if(n.startsWith('gen:')&&!character.actions[n])await character.addMotion(n,'assets/motions/gen/vmd/'+encodeURIComponent(n.slice(4))+'.vmd');
-    if(n==='idle')character.director.toBase();else await character.play(n);status.textContent=n}
+    if(n==='idle')character.director.toBase();else await character.play(n.startsWith('lib:')?n.slice(4):n);status.textContent=n}
   catch(e){status.textContent='error: '+(e.message||e)}
 };
 

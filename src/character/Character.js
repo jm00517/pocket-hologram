@@ -80,7 +80,7 @@ export class Character {
       return this.mixer;
     };
     this.director = new MotionDirector(this); // full-body mocap clips per conversation state
-    this.director.load();
+    this.directorReady = this.director.load();
     return this.mesh;
   }
 
