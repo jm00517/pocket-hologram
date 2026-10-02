@@ -15,3 +15,10 @@ track/track.glb
   https://sketchfab.com/3d-models/21a0ed90f355495fb80c3dcc92a94b10
   License: CC BY 4.0
   Changes: scaled to a 1067 mm gauge, decimated to 7%, textures 1024, Draco-compressed.
+
+vending/vending.glb
+  "Red Japanese Vending Machine" by Watanuki_San (tokyo45otaku) on Sketchfab
+  https://sketchfab.com/3d-models/a8a6874f62da478f8572554959d3c62e
+  License: CC BY 4.0
+  Changes: display floor removed, turned to face +z, re-centred on the base, textures 1024, Draco-compressed.
+  In the scene the red livery is repainted per machine colour by a shader.

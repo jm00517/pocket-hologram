@@ -66,14 +66,6 @@ function pbr(color, o = {}) {
 const noOutline = (m) => { for (const mat of [].concat(m.material ?? [])) mat.userData.outlineParameters = { visible: false }; return m; };
 const shadows = (o, cast = true, recv = true) => { o.traverse((m) => { if (m.isMesh) { m.castShadow = cast; m.receiveShadow = recv; } }); return o; };
 
-// mean colour of a canvas region, as a linear THREE.Color
-function avgColor(canvas, x, y, w, h) {
-  const d = canvas.getContext('2d').getImageData(x, y, w, h).data;
-  let r = 0, g = 0, b = 0;
-  for (let i = 0; i < d.length; i += 4) { r += d[i]; g += d[i + 1]; b += d[i + 2]; }
-  const n = (d.length / 4) * 255;
-  return new THREE.Color().setRGB(r / n, g / n, b / n, THREE.SRGBColorSpace);
-}
 function canvasTex(w, h, draw, repeat, srgb = true) {
   const c = document.createElement('canvas');
   c.width = w; c.height = h;
@@ -327,108 +319,54 @@ function utilityPoles(g) {
   }
 }
 
-// Japanese drink machine: lit sample showcase behind glass (only the showcase glows), price tags and
-// push-button LEDs, then an unlit door with coin/bill slots, a tiny LCD and the take-out pocket.
-// style: door colour, showcase backlight tint, brand on the door.
+// Japanese drink machine: "Red Japanese Vending Machine" (tokyo45otaku, Sketchfab, CC BY 4.0, see CREDITS) with
+// modelled sample cans and bottles. Per style the body is repainted and the tube light tinted; a glowing panel
+// behind the samples backlights them like the real thing, and three shelf emitters carry that light to her.
 const VM_STYLES = {
-  cool: { door: '#1e5bb8', glow: '#d8ecff', brand: 'COOL DRINK' },
-  sakura: { door: '#e0217f', glow: '#ff3fc0', brand: 'SAKURA' },
-  aqua: { door: '#0096ad', glow: '#2fe0ff', brand: 'AQUA' },
-  night: { door: '#6b33c9', glow: '#9a5cff', brand: 'MIDNIGHT' },
-  matcha: { door: '#4e9c1a', glow: '#9dff3f', brand: 'MATCHA' },
+  cool: { door: '#c81a1a', glow: '#e4f0ff' },
+  sakura: { door: '#e0217f', glow: '#ff3fc0' },
+  aqua: { door: '#0096ad', glow: '#2fe0ff' },
+  night: { door: '#6b33c9', glow: '#9a5cff' },
+  matcha: { door: '#4e9c1a', glow: '#9dff3f' },
 };
+const vendingModel = gltf.loadAsync('assets/models/vending/vending.glb').then((m) => m.scene);
+const CASE = { x: -0.06, y: 1.25, z: 0.12, w: 0.86, h: 0.68 }; // showcase behind the glass, model space
+// the red livery is painted into the door texture: swap red texels for the style colour at the same brightness
+function repaint(mat, color) {
+  const m = mat.clone(), c = new THREE.Color(color);
+  m.onBeforeCompile = (sh) => {
+    sh.uniforms.uPaint = { value: c };
+    sh.fragmentShader = sh.fragmentShader
+      .replace('#include <common>', '#include <common>\nuniform vec3 uPaint;')
+      .replace('#include <map_fragment>', `#include <map_fragment>
+        float red = smoothstep(0.08, 0.35, diffuseColor.r - max(diffuseColor.g, diffuseColor.b));
+        diffuseColor.rgb = mix(diffuseColor.rgb, uPaint * diffuseColor.r * 1.6, red);`);
+  };
+  m.customProgramCacheKey = () => 'repaint' + color;
+  return m;
+}
 function vendingMachine(g, x, z, rotY, style, { bins = true } = {}) {
-  const drinks = [ // [label, cap/lid, bottle?]
-    ['#e53935', '#c9ccd0'], ['#2e7d32', '#ffffff', 1], ['#f9a825', '#c9ccd0'], ['#1565c0', '#1565c0', 1], ['#6d4c41', '#c9ccd0'],
-    ['#ffffff', '#43a047', 1], ['#212121', '#c9ccd0'], ['#00838f', '#ffffff', 1], ['#fb8c00', '#c9ccd0'], ['#8e24aa', '#c9ccd0'],
-  ];
-  // e = emissive pass: the backlight glows, product fronts only catch a little of it
-  const showcase = (e) => (c, w, h) => {
-    c.fillStyle = e ? '#d8e6f2' : '#eef4f8'; c.fillRect(0, 0, w, h);
-    const rows = 3, cols = 8, rowH = h / rows;
-    for (let r = 0; r < rows; r++) {
-      const y0 = r * rowH, hot = r === rows - 1;
-      // light falls off away from the tube at the top of each shelf
-      const gr = c.createLinearGradient(0, y0, 0, y0 + rowH);
-      gr.addColorStop(0, 'rgba(255,255,255,0.8)'); gr.addColorStop(1, 'rgba(140,160,180,0.4)');
-      c.fillStyle = gr; c.fillRect(0, y0, w, rowH);
-      for (let i = 0; i < cols; i++) {
-        const [lab, lid, bottle] = drinks[(r * 3 + i * 7) % drinks.length], cx = (i + 0.5) * (w / cols), base = y0 + rowH * 0.68;
-        const bw = bottle ? 30 : 38, bh = bottle ? 112 : 84, top = base - bh;
-        if (bottle) { // PET: clear neck, cap, label band
-          c.fillStyle = '#cfe3ee'; c.fillRect(cx - bw / 2, top + 22, bw, bh - 22); c.fillRect(cx - 7, top + 6, 14, 18);
-          c.fillStyle = lid; c.fillRect(cx - 8, top, 16, 9);
-          c.fillStyle = lab; c.fillRect(cx - bw / 2, top + 48, bw, 40);
-        } else { // can: silver lid, full-wrap print
-          c.fillStyle = lab; c.fillRect(cx - bw / 2, top + 8, bw, bh - 8);
-          c.fillStyle = lid; c.fillRect(cx - bw / 2 + 2, top, bw - 4, 9);
-          c.fillStyle = 'rgba(255,255,255,0.75)'; c.fillRect(cx - bw / 2 + 6, top + 26, bw - 12, 14);
-        }
-        c.fillStyle = 'rgba(255,255,255,0.35)'; c.fillRect(cx - bw / 2 + 4, top + 10, 4, bh - 14); // cylinder highlight
-        if (e) { // backlight through the samples: cans block it, PET bottles pass it tinted by their label
-          if (bottle) { c.globalAlpha = 0.75; c.fillStyle = lab; c.fillRect(cx - bw / 2, top + 22, bw, bh - 22); c.globalAlpha = 1; }
-          else { c.fillStyle = 'rgba(0,0,0,0.85)'; c.fillRect(cx - bw / 2, top, bw, bh); }
-        }
-        // price tag + push button (blue = cold, red = hot, a couple sold out)
-        const ty = base + 10, sold = (r * 5 + i) % 11 === 3;
-        c.fillStyle = e ? '#000' : '#ffffff'; c.fillRect(cx - 24, ty, 48, 20);
-        c.fillStyle = e ? '#000' : '#222'; c.font = 'bold 17px sans-serif'; c.textAlign = 'center'; c.fillText(bottle ? '160' : '130', cx, ty + 17);
-        c.fillStyle = sold ? '#ff2a2a' : hot ? '#ff4a2a' : '#2a90ff';
-        c.fillRect(cx - 18, ty + 26, 36, 10);
-        if (sold) { c.font = 'bold 12px sans-serif'; c.fillText('売切', cx, ty + 52); }
-      }
-      c.fillStyle = e ? '#000' : '#5b6670'; c.fillRect(0, y0 + rowH - 6, w, 6); // shelf lip
-      if (r === 0 || hot) {
-        c.fillStyle = e ? '#000' : hot ? '#d32f2f' : '#1565c0'; c.fillRect(0, y0, 96, 20);
-        c.fillStyle = e ? '#000' : '#fff'; c.font = 'bold 14px sans-serif'; c.textAlign = 'left'; c.fillText(hot ? 'あたたか〜い' : 'つめた〜い', 5, y0 + 15);
-      }
-    }
-  };
-  const SW = 512, SH = 600, caseMap = canvasTex(SW, SH, showcase(false)), caseGlow = canvasTex(SW, SH, showcase(true));
-  // door face: coloured upper frame, white lower door with slots; only the LCD glows
-  const doorDraw = (e) => (c, w, h) => {
-    c.fillStyle = e ? '#000' : style.door; c.fillRect(0, 0, w, h);
-    if (!e) {
-      c.fillStyle = '#f4f7fa'; c.fillRect(0, h * 0.6, w, h * 0.4);
-      c.fillStyle = style.door; c.fillRect(0, h * 0.6, w, 8);
-      c.font = 'italic bold 22px sans-serif'; c.textAlign = 'center'; c.fillText(style.brand, w * 0.34, h * 0.68);
-      c.fillStyle = '#9aa3ab'; c.fillRect(w * 0.74, h * 0.635, 40, 60); // coin plate
-      c.fillStyle = '#20252a'; c.fillRect(w * 0.74 + 17, h * 0.635 + 8, 6, 20); c.fillRect(w * 0.74 + 8, h * 0.635 + 38, 24, 12);
-      c.fillStyle = '#2b3036'; c.fillRect(w * 0.74, h * 0.715, 40, 24); // bill acceptor
-      c.fillStyle = '#9aa3ab'; c.fillRect(w * 0.74 + 4, h * 0.715 + 10, 32, 4);
-      c.fillStyle = '#5c6670'; c.font = '12px sans-serif'; c.fillText('10 50 100 500 1000', w * 0.34, h * 0.72);
-    }
-    c.fillStyle = e ? '#3cff7a' : '#0c1a10'; c.fillRect(w * 0.74, h * 0.612, 40, 13); // LCD above the coin slot
-    if (e) { c.fillStyle = '#000'; c.font = 'bold 12px monospace'; c.textAlign = 'center'; c.fillText('0', w * 0.74 + 33, h * 0.612 + 11); }
-  };
-  const doorMap = canvasTex(256, 456, doorDraw(false)), doorGlow = canvasTex(256, 456, doorDraw(true));
-
   const vm = new THREE.Group(); vm.position.set(x, 0, z); vm.rotation.y = rotY;
-  const body = pbr('#e9edf0', { roughness: 0.35, metalness: 0.2 });
-  vm.add(shadows(box(1.05, 1.83, 0.72, body, 0, 0.915, -0.02)));
-  const door = new THREE.MeshStandardMaterial({ map: doorMap, emissive: '#ffffff', emissiveMap: doorGlow, emissiveIntensity: 0.8, roughness: 0.3, metalness: 0.1 });
-  vm.add(box(1.0, 1.78, 0.04, [body, body, body, body, door, body], 0, 0.92, 0.36));
-  // showcase: lit samples, framed and set back behind glass
-  const sh = 0.86 * SH / SW, cy = 1.32;
-  const caseMat = new THREE.MeshStandardMaterial({ map: caseMap, emissive: style.glow, emissiveMap: caseGlow, emissiveIntensity: 0.55, roughness: 0.7 });
-  const sc = new THREE.Mesh(new THREE.PlaneGeometry(0.86, sh), caseMat);
-  sc.position.set(0, cy, 0.385); vm.add(sc); REFS.vending.push(caseMat);
-  // one emitter per shelf, facing out of the glass, coloured by what that shelf's samples let through
-  const tint = new THREE.Color(style.glow);
+  const back = new THREE.MeshStandardMaterial({ color: '#000000', emissive: style.glow, emissiveIntensity: 0.55 });
+  REFS.vending.push(back);
+  const panel = new THREE.Mesh(new THREE.PlaneGeometry(CASE.w, CASE.h), back);
+  panel.position.set(CASE.x, CASE.y, CASE.z); vm.add(panel);
+  vendingModel.then((src) => {
+    const c = src.clone();
+    c.traverse((o) => {
+      if (!o.isMesh) return;
+      noOutline(o);
+      const n = o.material.name;
+      if (n === 'Vending_1_Red') { o.material = o.material.clone(); o.material.color.set(style.door); }
+      if (n === 'Vending_1' && style !== VM_STYLES.cool) o.material = repaint(o.material, style.door);
+      if (n === 'Lamp_Light_bulb') o.material = back;
+    });
+    vm.add(shadows(c));
+  });
   for (let r = 0; r < 3; r++) {
-    const a = new THREE.Object3D(); a.position.set(0, sh / 2 - (r + 0.5) * sh / 3, 0.01); sc.add(a);
-    REFS.emitters.push({ obj: a, facing: true, color: avgColor(caseGlow.image, 0, (r * SH) / 3, SW, SH / 3).multiply(tint), power: () => caseMat.emissiveIntensity * 1.2, range: 5 });
+    const a = new THREE.Object3D(); a.position.set(CASE.x, CASE.y + CASE.h / 2 - (r + 0.5) * CASE.h / 3, 0.36); vm.add(a);
+    REFS.emitters.push({ obj: a, facing: true, color: new THREE.Color(style.glow), power: () => back.emissiveIntensity * 1.2, range: 5 });
   }
-  const frame = pbr('#c3cad1', { roughness: 0.3, metalness: 0.6 });
-  for (const [w, h, fx, fy] of [[0.94, 0.04, 0, cy + sh / 2 + 0.02], [0.94, 0.04, 0, cy - sh / 2 - 0.02], [0.04, sh, -0.45, cy], [0.04, sh, 0.45, cy]]) vm.add(box(w, h, 0.05, frame, fx, fy, 0.405));
-  const glass = new THREE.MeshStandardMaterial({ color: '#ffffff', transparent: true, opacity: 0.08, roughness: 0.02, metalness: 1, depthWrite: false });
-  const gl = new THREE.Mesh(new THREE.PlaneGeometry(0.86, sh), glass); gl.position.set(0, cy, 0.425); vm.add(gl);
-  // take-out pocket with smoked flap, change cup
-  vm.add(box(0.62, 0.2, 0.06, pbr('#15181b', { roughness: 0.6 }), -0.08, 0.26, 0.37));
-  vm.add(box(0.6, 0.17, 0.01, new THREE.MeshStandardMaterial({ color: '#2a2f35', transparent: true, opacity: 0.85, roughness: 0.15, metalness: 0.3 }), -0.08, 0.27, 0.405));
-  vm.add(box(0.12, 0.08, 0.04, pbr('#9aa3ab', { metalness: 0.7, roughness: 0.3 }), 0.36, 0.2, 0.39));
-  vm.add(shadows(box(1.08, 0.1, 0.78, pbr('#d6dade', { roughness: 0.4 }), 0, 1.88, -0.02))); // top cap
-  vm.add(shadows(box(1.0, 0.06, 0.66, pbr('#3a3f45', { roughness: 0.8 }), 0, 0.03, 0))); // plinth
   // recycle boxes: cans / PET
   if (bins) for (const [bx, col, lab] of [[0.72, '#2c7be5', 'あきかん'], [1.05, '#2e9e5b', 'ペットボトル']]) {
     const t = canvasTex(128, 128, (c, w) => { c.fillStyle = col; c.fillRect(0, 0, w, w); c.fillStyle = '#111'; c.beginPath(); c.arc(w / 2, 34, 18, 0, 7); c.fill(); c.fillStyle = '#fff'; c.font = `bold ${lab.length > 4 ? 14 : 22}px sans-serif`; c.textAlign = 'center'; c.fillText(lab, w / 2, 96); });
