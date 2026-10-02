@@ -6,11 +6,12 @@
 import * as THREE from 'three';
 import { Lensflare, LensflareElement } from 'three/addons/objects/Lensflare.js';
 
+const ROAD_LEN = 17.6;
 const TRACK_Z = -11, CYCLE = 42, TRAIN_SPEED = 17; // m, s, m/s
 const SUN_DIR = new THREE.Vector3(-0.45, 0.62, 0.64).normalize(); // high, front-left: lights the face
 
 // Handles the weather system restyles (filled while building)
-export const REFS = { walls: [], roofs: [], leaves: [], windows: [], nightLights: [], redLights: [], lowTrees: [], emitters: [], vending: [], neonSigns: [], neonHaze: null };
+export const REFS = { walls: [], roofs: [], leaves: [], windows: [], nightLights: [], redLights: [], lowTrees: [], emitters: [], vending: [], neonSigns: [], neonHaze: null, sea: null, foam: null, sand: null };
 // emitters: things that glow onto the character in real time (GI.js). { obj, color, power() 0..1, range in m,
 // facing?: emits only out of obj's +z (a lit panel) }
 const mats = new Map();
@@ -127,15 +128,16 @@ export function bakeSky(renderer) {
 // --- ground, road, rails ---------------------------------------------------------------------------
 function ground(g) {
   const grassTex = canvasTex(256, 256, speckle('#86c068', [100, 60], 3500, 2), [120, 120]);
-  g.add(REFS.ground = shadows(box(400, 0.1, 400, pbr('#9ad276', { map: grassTex, roughness: 0.95 }), 0, -0.06, -150), false));
-  const asphalt = canvasTex(512, 512, speckle('#5f6166', [78, 48], 9000, 1.6), [3, 60]);
-  const rough = canvasTex(256, 256, speckle('#d0d0d0', [150, 105], 4000, 2), [3, 60], false);
-  const road = new THREE.Mesh(new THREE.PlaneGeometry(6, 180), pbr('#ffffff', { map: asphalt, roughnessMap: rough, roughness: 0.85 }));
-  road.rotation.x = -Math.PI / 2; road.position.set(0, 0.002, -89.5); road.receiveShadow = true;
+  g.add(REFS.ground = shadows(box(400, 0.1, 250, pbr('#9ad276', { map: grassTex, roughness: 0.95 }), 0, -0.06, -26 + 125), false)); // ends at the sea wall
+  const asphalt = canvasTex(512, 512, speckle('#5f6166', [78, 48], 9000, 1.6), [3, 6]);
+  const rough = canvasTex(256, 256, speckle('#d0d0d0', [150, 105], 4000, 2), [3, 6], false);
+  // runs down from the viewer, over the tracks, and ends at Route 134 (z -17.1)
+  const road = new THREE.Mesh(new THREE.PlaneGeometry(6, ROAD_LEN), pbr('#ffffff', { map: asphalt, roughnessMap: rough, roughness: 0.85 }));
+  road.rotation.x = -Math.PI / 2; road.position.set(0, 0.002, 0.5 - ROAD_LEN / 2); road.receiveShadow = true;
   REFS.road = road;
   g.add(road);
   const paint = pbr('#d6d8d4', { roughness: 0.75 }); // worn road paint, not pure white: full sun pushed it past the bloom threshold
-  for (const sx of [-1, 1]) g.add(shadows(box(0.15, 0.012, 180, paint, sx * 2.75, 0.008, -89.5), false));
+  for (const sx of [-1, 1]) g.add(shadows(box(0.15, 0.012, ROAD_LEN, paint, sx * 2.75, 0.008, 0.5 - ROAD_LEN / 2), false));
   g.add(shadows(box(5.3, 0.012, 0.35, paint, 0, 0.01, -6.6), false));
   const tomare = canvasTex(512, 256, (x, w, h) => {
     x.fillStyle = '#d6d8d4'; x.font = 'bold 200px "Yu Gothic","Meiryo",sans-serif'; x.textAlign = 'center'; x.textBaseline = 'middle';
@@ -173,7 +175,7 @@ function ground(g) {
   tuft.userData.outlineParameters = { visible: false };
   const mx = new THREE.Matrix4(), q = new THREE.Quaternion(), s = new THREE.Vector3();
   for (let i = 0; i < 1400; i++) {
-    const side = i % 2 ? 1 : -1, x = side * (3.05 + Math.random() * 6), z = 0.4 - Math.random() * 70;
+    const side = i % 2 ? 1 : -1, x = side * (3.05 + Math.random() * 6), z = 0.4 - Math.random() * 8.5; // viewer's side of the tracks
     if (Math.abs(z - TRACK_Z) < 2.3) { i--; continue; }
     q.setFromEuler(new THREE.Euler(0, Math.random() * 6.28, 0));
     s.setScalar(0.6 + Math.random() * 0.8);
@@ -248,29 +250,27 @@ function crossingSignal(g, x, z, face, lamps, arms) {
 function utilityPoles(g) {
   const pole = pbr('#c3beb3', { roughness: 0.85 }), arm = pbr('#8e8a82', { metalness: 0.4, roughness: 0.6 }), ins = pbr('#f5f5f0', { roughness: 0.2 });
   const plate = canvasTex(64, 200, (c, w, h) => { c.fillStyle = '#1b4fa8'; c.fillRect(0, 0, w, h); c.fillStyle = '#fff'; c.font = 'bold 36px "Yu Gothic",sans-serif'; c.textAlign = 'center'; ['桜', '町', '二', '丁', '目'].forEach((ch, i) => c.fillText(ch, w / 2, 40 + i * 38)); });
-  const zs = [-2, -32, -62, -92, -122];
-  for (const z of zs) {
-    const x = -4.2;
+  // two down the hill road, then a line along Route 134's inland kerb
+  const poles = [[-4.2, -2], [-4.2, -16], [-34, -16], [-64, -16], [26, -16], [56, -16]];
+  for (const [x, z] of poles) {
     g.add(shadows(cyl(0.16, 10, pole, x, 5, z, 12, 0.19)));
-    for (const y of [9.2, 8.4]) {
-      g.add(shadows(box(1.8, 0.1, 0.1, arm, x, y, z)));
-      for (const dx of [-0.75, 0, 0.75]) g.add(cyl(0.05, 0.14, ins, x + dx, y + 0.12, z, 8));
+    // cross-arms square to the line the pole carries; the corner pole carries both
+    const dirs = z !== -16 ? ['x'] : x === -4.2 ? ['x', 'z'] : ['z'];
+    for (const y of [9.2, 8.4]) for (const d of dirs) {
+      g.add(shadows(d === 'x' ? box(1.8, 0.1, 0.1, arm, x, y, z) : box(0.1, 0.1, 1.8, arm, x, y, z)));
+      for (const o of [-0.75, 0, 0.75]) g.add(cyl(0.05, 0.14, ins, x + (d === 'x' ? o : 0), y + 0.12, z + (d === 'z' ? o : 0), 8));
     }
     g.add(shadows(cyl(0.24, 0.65, pbr('#7b8086', { metalness: 0.5, roughness: 0.5 }), x + 0.38, 7.4, z, 14)));
     const p = noOutline(new THREE.Mesh(new THREE.PlaneGeometry(0.22, 0.7), pbr('#ffffff', { map: plate, roughness: 0.4 })));
     p.position.set(x + 0.2, 2.4, z); p.rotation.y = Math.PI / 2; g.add(p);
   }
   const wire = new THREE.LineBasicMaterial({ color: '#2b2d30' });
-  for (const [dx, y] of [[-0.75, 9.32], [0, 9.32], [0.75, 9.32], [-0.75, 8.52], [0.75, 8.52]]) {
-    for (let i = 0; i < zs.length - 1; i++) {
-      const a = new THREE.Vector3(-4.2 + dx, y, zs[i]), b = new THREE.Vector3(-4.2 + dx, y, zs[i + 1]);
-      const mid = a.clone().lerp(b, 0.5); mid.y -= 0.9;
-      g.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(new THREE.QuadraticBezierCurve3(a, mid, b).getPoints(20)), wire));
-    }
+  const sag = (a, b) => g.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(new THREE.QuadraticBezierCurve3(a, a.clone().lerp(b, 0.5).add(new THREE.Vector3(0, -0.9, 0)), b).getPoints(20)), wire));
+  const pairs = [[0, 1], [2, 1], [3, 2], [1, 4], [4, 5]]; // hill road, then along Route 134 both ways
+  for (const [i, j] of pairs) for (const [d, y] of [[-0.75, 9.32], [0, 9.32], [0.75, 9.32], [-0.75, 8.52], [0.75, 8.52]]) {
+    const [ax, az] = poles[i], [bx, bz] = poles[j], along = az === bz;
+    sag(new THREE.Vector3(ax + (along ? 0 : d), y, az + (along ? d : 0)), new THREE.Vector3(bx + (along ? 0 : d), y, bz + (along ? d : 0)));
   }
-  // a service drop across the road to the houses
-  const a = new THREE.Vector3(-3.45, 8.52, -2), b = new THREE.Vector3(9, 5.5, -18);
-  g.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(new THREE.QuadraticBezierCurve3(a, a.clone().lerp(b, 0.5).add(new THREE.Vector3(0, -1.2, 0)), b).getPoints(24)), wire));
 }
 
 // Japanese drink machine: lit sample showcase behind glass (only the showcase glows), price tags and
@@ -440,62 +440,70 @@ function curveMirror(g, x, z, rotY) {
   g.add(m);
 }
 
-function guardrails(g) {
-  const rail = pbr('#f2f4f5', { metalness: 0.55, roughness: 0.3 }), post = pbr('#e6e8ea', { metalness: 0.5, roughness: 0.35 });
-  for (const [x, z0, z1] of [[3.2, -15.5, -40], [-3.2, -15.5, -28]]) {
-    const len = z0 - z1;
-    g.add(shadows(box(0.06, 0.32, len, rail, x, 0.7, (z0 + z1) / 2)));
-    for (let z = z0; z >= z1; z -= 2) g.add(shadows(cyl(0.045, 0.75, post, x, 0.375, z, 8)));
+// --- the coast past the crossing (Kamakura-Kokomae): Route 134, a sandy-orange pavement, the sea wall, a
+// concrete revetment down to the beach, and the open sea to the horizon with Enoshima far off to the right.
+// The sea is a glossy standard material with a scrolling wave normal map, so it reflects each weather's sky
+// through the existing IBL instead of a second full-scene mirror render.
+const SEA_Y = -4, WALL_Z = -26.6;
+function waveNormals() { // tileable: integer wave numbers over the 256 px tile
+  const N = 256, h = new Float32Array(N * N);
+  const waves = [[3, 1, 1], [-2, 5, 0.6], [7, -3, 0.35], [-9, -8, 0.2], [13, 4, 0.12], [-5, 17, 0.08]];
+  for (let y = 0; y < N; y++) for (let x = 0; x < N; x++) {
+    let v = 0;
+    for (const [kx, ky, a] of waves) v += a * Math.sin(((kx * x + ky * y) / N) * Math.PI * 2 + kx * 1.7);
+    h[y * N + x] = v;
   }
+  return canvasTex(N, N, (c) => {
+    const img = c.createImageData(N, N);
+    for (let y = 0; y < N; y++) for (let x = 0; x < N; x++) {
+      const dx = h[y * N + ((x + 1) % N)] - h[y * N + ((x + N - 1) % N)], dy = h[((y + 1) % N) * N + x] - h[((y + N - 1) % N) * N + x];
+      const n = new THREE.Vector3(-dx * 6, -dy * 6, 1).normalize(), i = (y * N + x) * 4;
+      img.data[i] = (n.x * 0.5 + 0.5) * 255; img.data[i + 1] = (n.y * 0.5 + 0.5) * 255; img.data[i + 2] = (n.z * 0.5 + 0.5) * 255; img.data[i + 3] = 255;
+    }
+    c.putImageData(img, 0, 0);
+  }, [900, 450], false);
+}
+function seaside(g) {
+  // Route 134: two lanes along x, white edge lines, dashed centre
+  const asphalt = canvasTex(512, 512, speckle('#5c5e63', [76, 48], 9000, 1.6), [120, 1.4]);
+  const r134 = new THREE.Mesh(new THREE.PlaneGeometry(600, 7), pbr('#ffffff', { map: asphalt, roughness: 0.85 }));
+  r134.rotation.x = -Math.PI / 2; r134.position.set(0, 0.002, -20.6); r134.receiveShadow = true; g.add(r134);
+  const paint = pbr('#d6d8d4', { roughness: 0.75 });
+  for (const z of [-17.4, -23.8]) g.add(shadows(box(600, 0.012, 0.15, paint, 0, 0.008, z), false));
+  for (let x = -300; x < 300; x += 8) g.add(box(5, 0.012, 0.15, paint, x, 0.008, -20.6));
+  // sandy-orange seaside pavement, kerb, sea wall
+  const paveTex = canvasTex(256, 256, speckle('#cf9a63', [150, 60], 5000, 2), [150, 1]);
+  g.add(shadows(box(600, 0.14, 2.4, pbr('#ffffff', { map: paveTex, roughness: 0.9 }), 0, 0.07, -25.3), false));
+  g.add(shadows(box(600, 0.16, 0.2, pbr('#c9c6bd', { roughness: 0.8 }), 0, 0.08, -24.1)));
+  const concrete = pbr('#b9b5ab', { roughness: 0.85 });
+  g.add(shadows(box(600, 0.95, 0.35, concrete, 0, 0.47, WALL_Z)));
+  // revetment slope down to the beach, then sand to the waterline
+  const slope = new THREE.Mesh(new THREE.PlaneGeometry(600, Math.hypot(4.2, -SEA_Y)), concrete);
+  slope.rotation.x = -Math.PI / 2 - Math.atan2(-SEA_Y, 4.2); // far edge down toward the beach slope.position.set(0, SEA_Y / 2, WALL_Z - 0.2 - 2.1); slope.receiveShadow = true; g.add(slope);
+  const sandTex = canvasTex(256, 256, speckle('#cdbb94', [150, 70], 6000, 1.5), [200, 4]);
+  const sand = new THREE.Mesh(new THREE.PlaneGeometry(600, 14), pbr('#ffffff', { map: sandTex, roughness: 1 }));
+  sand.rotation.x = -Math.PI / 2 - 0.035; sand.position.set(0, SEA_Y + 0.1, WALL_Z - 4.4 - 7); sand.receiveShadow = true; g.add(sand);
+  REFS.sand = sand.material;
+  // the sea
+  const normalMap = waveNormals();
+  const sea = new THREE.Mesh(new THREE.PlaneGeometry(9000, 4500), new THREE.MeshStandardMaterial({ color: '#24525f', roughness: 0.08, metalness: 0.1, normalMap, normalScale: new THREE.Vector2(0.55, 0.55), fog: false }));
+  sea.rotation.x = -Math.PI / 2; sea.position.set(0, SEA_Y + 0.15, WALL_Z - 16 - 2250); g.add(sea);
+  REFS.sea = sea.material;
+  // surf: a soft white band breaking on the sand, drifting
+  const foamTex = canvasTex(512, 64, (c, w, h) => {
+    for (let i = 0; i < 900; i++) { const x = Math.random() * w, y = h * 0.5 + (Math.random() - 0.5) * h * 0.7 * Math.random(); c.fillStyle = `rgba(255,255,255,${0.15 + Math.random() * 0.4})`; c.beginPath(); c.ellipse(x, y, 4 + Math.random() * 14, 1 + Math.random() * 3, 0, 0, 7); c.fill(); }
+  }, [40, 1]);
+  const foam = new THREE.Mesh(new THREE.PlaneGeometry(600, 5), new THREE.MeshStandardMaterial({ map: foamTex, transparent: true, depthWrite: false, roughness: 0.6 }));
+  foam.rotation.x = -Math.PI / 2; foam.position.set(0, SEA_Y + 0.2, WALL_Z - 16.5); g.add(foam);
+  REFS.foam = foamTex;
+  // Enoshima: a low wooded hump with the Sea Candle, hazed by the fog
+  const isle = new THREE.Group(); isle.position.set(1100, SEA_Y, -2600);
+  const hump = new THREE.Mesh(new THREE.SphereGeometry(180, 24, 10, 0, Math.PI * 2, 0, Math.PI / 2), pbr('#3e5a3c', { roughness: 1 }));
+  hump.scale.set(1.4, 0.32, 0.8); isle.add(hump);
+  isle.add(cyl(4, 40, pbr('#d8dcdf', { roughness: 0.6 }), -30, 75, 0, 10, 7));
+  g.add(isle);
 }
 
-function townscape(g) {
-  const walls = ['#f5efe2', '#eaf2f4', '#f7e7d6', '#e8eee1', '#f3f0f7'], roofs = ['#3d6f9a', '#2f8f8a', '#b05a43', '#5a6470', '#3f5f8f'];
-  let seed = 7; const rnd = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
-  const win = canvasTex(64, 64, (c, w, h) => { c.fillStyle = '#9fc7e6'; c.fillRect(0, 0, w, h); c.fillStyle = 'rgba(255,255,255,0.6)'; c.fillRect(6, 6, 18, 52); c.strokeStyle = '#e8edf0'; c.lineWidth = 6; c.strokeRect(0, 0, w, h); c.beginPath(); c.moveTo(w / 2, 0); c.lineTo(w / 2, h); c.stroke(); });
-  // warm at night; the neon preset swaps each to its own colour (userData.neon)
-  const glasses = ['#ffcf8a', '#7ff6ff', '#ff86dc', '#b4ff8a', '#c8a2ff'].map((neon) => {
-    const m = new THREE.MeshStandardMaterial({ color: '#ffffff', map: win, metalness: 0.3, roughness: 0.08, emissive: '#ffcf8a', emissiveIntensity: 0 });
-    m.userData.neon = new THREE.Color(neon); REFS.windows.push(m); return m;
-  });
-  for (const side of [-1, 1]) {
-    for (let z = -16; z > -150; z -= 9 + rnd() * 6) {
-      const w = 6 + rnd() * 4, d = 6 + rnd() * 3, h = 3 + rnd() * 3.5, x = side * (9 + rnd() * 10);
-      const house = new THREE.Group();
-      const wall = pbr(walls[(rnd() * 5) | 0], { roughness: 0.75 }); if (!REFS.walls.includes(wall)) REFS.walls.push(wall);
-      house.add(box(w, h, d, wall, 0, h / 2, 0));
-      const roofMat = pbr(roofs[(rnd() * 5) | 0], { roughness: 0.55, metalness: 0.1 }); if (!REFS.roofs.includes(roofMat)) REFS.roofs.push(roofMat);
-      const roof = new THREE.Mesh(new THREE.CylinderGeometry(0.01, d * 0.72, 1.8, 4, 1), roofMat);
-      roof.rotation.y = Math.PI / 4; roof.scale.set(w / d, 1, 1); roof.position.y = h + 0.9;
-      house.add(roof);
-      const glass = glasses[Math.abs(Math.round(z * 3 + side)) % glasses.length]; // not rnd(): keep the seeded town layout
-      for (let i = 0; i < 2; i++) { const wdw = box(1.1, 1.1, 0.05, glass, (i - 0.5) * w * 0.45, h * 0.55, d / 2 + 0.03); house.add(wdw); }
-      if (rnd() > 0.5) house.add(box(w * 0.5, 0.1, 1, pbr('#c9ced3', { metalness: 0.4, roughness: 0.4 }), 0, h * 0.62, d / 2 + 0.5)); // balcony
-      house.position.set(x, 0, z);
-      house.lookAt(0, 0, z); house.rotateY(Math.PI); // face the road
-      g.add(shadows(house));
-    }
-  }
-  const leaf = [pbr('#4fae58', { roughness: 0.85 }), pbr('#3f9a50', { roughness: 0.85 }), pbr('#67bf5f', { roughness: 0.85 })], trunk = pbr('#7a5a3c');
-  REFS.leaves.push(...leaf);
-  for (let i = 0; i < 46; i++) {
-    const side = i % 2 ? 1 : -1, x = side * (6 + rnd() * 30), z = -14 - rnd() * 130;
-    if (Math.abs(z - TRACK_Z) < 4) continue;
-    const t = new THREE.Group();
-    t.add(cyl(0.18, 2.4, trunk, 0, 1.2, 0, 8));
-    const r = 1.4 + rnd() * 1.3;
-    for (let k = 0; k < 3; k++) {
-      const crown = new THREE.Mesh(new THREE.IcosahedronGeometry(r * (0.7 + k * 0.15), 1), leaf[(i + k) % 3]);
-      crown.position.set((rnd() - 0.5) * r, 2.4 + r * (0.6 + k * 0.35), (rnd() - 0.5) * r);
-      t.add(crown);
-    }
-    t.position.set(x, 0, z);
-    g.add(shadows(t));
-    REFS.lowTrees.push(t);
-  }
-}
-
-// --- night lighting: street lamps + light spill (off unless the weather turns them on) ---------------
 function streetLamp(g, x, z, rotY) {
   const l = new THREE.Group(); l.position.set(x, 0, z); l.rotation.y = rotY;
   const metal = pbr('#9aa2aa', { metalness: 0.7, roughness: 0.4 });
@@ -553,12 +561,11 @@ export function createCrossing(renderer) {
   const lamps = [], arms = [], glows = [];
   crossingSignal(g, -3.5, TRACK_Z + 2.6, 0, lamps, arms);
   crossingSignal(g, 3.5, TRACK_Z - 2.6, Math.PI, lamps, arms);
-  utilityPoles(g); guardrails(g);
+  utilityPoles(g); seaside(g);
   vendingMachine(g, 4.0, -3.0, -Math.PI / 2 + 0.25, VM_STYLES.cool);
   vendingCorner(g);
   neonSign(g, 2.85, -1.4, -0.45);
   curveMirror(g, 3.6, -7.6, -0.6);
-  townscape(g);
   streetLamp(g, -3.9, -15.5, 0);
   streetLamp(g, 3.9, -0.6, Math.PI);
   { // vending machine spill + red spill from the flashing signals
@@ -630,6 +637,7 @@ export function createCrossing(renderer) {
       const active = head > -5 * TRAIN_SPEED && tail < 8;
       bar += ((active ? 0 : 1.45) - bar) * (1 - Math.exp(-dt * (active ? 2.2 : 1.4)));
       for (const a of arms) a.rotation.z = bar;
+      if (REFS.sea) { REFS.sea.normalMap.offset.set(t * 0.004, t * 0.0025); REFS.foam.offset.x = Math.sin(t * 0.3) * 0.02; }
       const beat = Math.floor(t * 2.2);
       for (let i = 0; i < lamps.length; i++) lamps[i].emissiveIntensity = active && (beat + i) % 2 ? 6 : 0;
       for (let i = 0; i < REFS.redLights.length; i++) REFS.redLights[i].intensity = active && (beat + i) % 2 ? this.redPower ?? 0 : 0;

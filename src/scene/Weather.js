@@ -106,7 +106,7 @@ function applyTextures() {
 // --- wet asphalt: planar reflection mixed with the asphalt, puddles reflect more ----------------------
 function wetRoad() {
   const mask = (() => {
-    // 256x512 tiled 15x along the 6 x 180 m road: one tile = 6 x 12 m, square pixels (~2.3 cm)
+    // 256x512, one tile = 6 x 12 m of road, square pixels (~2.3 cm)
     const c = document.createElement('canvas'); c.width = 256; c.height = 512;
     const x = c.getContext('2d'); x.fillStyle = '#000'; x.fillRect(0, 0, 256, 512);
     for (let p = 0; p < 4; p++) { // a few puddles per tile, each a lumpy cluster of blobs
@@ -120,13 +120,14 @@ function wetRoad() {
     }
     const t = new THREE.CanvasTexture(c); t.wrapS = t.wrapT = THREE.RepeatWrapping; return t;
   })();
-  const r = new Reflector(new THREE.PlaneGeometry(6, 180), {
+  const { width: RW, height: RL } = REFS.road.geometry.parameters;
+  const r = new Reflector(new THREE.PlaneGeometry(RW, RL), {
     textureWidth: Math.min(1024, innerWidth / 2), textureHeight: Math.min(1024, innerHeight / 2), clipBias: 0.002, // half res: only the puddles show it sharply
     shader: {
       uniforms: {
         color: { value: new THREE.Color(1, 1, 1) }, tDiffuse: { value: null }, textureMatrix: { value: null },
         tMap: { value: REFS.road.material.map }, tMask: { value: mask }, ambient: { value: new THREE.Color(0.55, 0.58, 0.62) },
-        repeat: { value: new THREE.Vector2(2, 60) },
+        repeat: { value: new THREE.Vector2(2, RL / 3) },
         uTime: { value: 0 },
       },
       vertexShader: /* glsl */`
@@ -153,9 +154,9 @@ function wetRoad() {
         }
         void main() {
           vec3 base = texture2D(tMap, vUv * repeat).rgb;
-          vec4 m = texture2D(tMask, vUv * vec2(1.0, 15.0));
+          vec4 m = texture2D(tMask, vUv * vec2(1.0, ${(RL / 12).toFixed(3)}));
           float puddle = smoothstep(0.45, 0.6, m.r);
-          vec2 pm = vUv * vec2(6.0, 180.0); // meters on the road
+          vec2 pm = vUv * vec2(${RW.toFixed(1)}, ${RL.toFixed(1)}); // meters on the road
           vec2 wind = vec2(sin(pm.y * 3.1 + uTime * 1.7) + sin(pm.x * 4.3 - uTime * 1.3), cos(pm.x * 2.7 + pm.y * 1.9 + uTime * 2.1)) * 0.25;
           vec2 rip = drips(pm * 1.4) + wind;
           vec4 uvr = vUvR; uvr.xy += (base.rg - 0.35) * 0.05 * (1.0 - puddle) * uvr.w; // damp asphalt: reflection broken up by the grain
