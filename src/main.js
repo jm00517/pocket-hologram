@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { OutlineEffect } from 'three/addons/effects/OutlineEffect.js';
+import { PointerLockControls } from 'three/addons/controls/PointerLockControls.js';
 import { FaceTracker } from './tracking/FaceTracker.js';
 import { OffAxisCamera } from './spatial/OffAxisCamera.js';
 import { ModelLoader } from './models/ModelLoader.js';
@@ -135,7 +136,24 @@ const bellBtn=document.createElement('button');bellBtn.type='button';bellBtn.tex
 bellBtn.onclick=()=>{bellOn=!bellOn;crossing.setSound(bellOn);bellBtn.textContent=bellOn?'🔔 on':'🔔 off'};
 weatherSel=document.createElement('select');weatherSel.innerHTML=weather.list().map(([k,l])=>`<option value="${k}">${l}</option>`).join('');weatherSel.value=weatherName;
 weatherSel.onchange=()=>{weatherName=weatherSel.value;if(bg==='crossing')weather.set(weatherName,charHeight/1.6).then(captureGI)};
-resetBtn.after(bgSel,weatherSel,bellBtn);
+// Free camera: F or the button toggles; click the view to grab the mouse (Esc releases). WASD move,
+// Space/C up/down, Shift fast. The head-coupled window view is suspended while it's on.
+const freeCam={on:false,keys:new Set(),controls:new PointerLockControls(camera,canvas)};
+const freeBtn=document.createElement('button');freeBtn.type='button';freeBtn.textContent='🎥 free cam';
+function toggleFree(){freeCam.on=!freeCam.on;freeBtn.textContent=freeCam.on?'🎥 free cam ON (F)':'🎥 free cam';if(!freeCam.on)freeCam.controls.unlock()}
+freeBtn.onclick=toggleFree;
+canvas.addEventListener('click',()=>{if(freeCam.on)freeCam.controls.lock()});
+addEventListener('keydown',e=>{if(e.target.closest?.('input,textarea,select'))return;if(e.code==='KeyF')toggleFree();freeCam.keys.add(e.code);if(freeCam.on&&/^(Key[WASDC]|Space)$/.test(e.code))e.preventDefault()}); // Space would click the last-focused button
+addEventListener('keyup',e=>freeCam.keys.delete(e.code));
+addEventListener('blur',()=>freeCam.keys.clear());
+function flyFreeCam(dt){
+  const k=freeCam.keys,v=(charHeight||1.6)/1.6*(k.has('ShiftLeft')||k.has('ShiftRight')?10:2.5)*dt; // 2.5 m/s, 10 with Shift
+  freeCam.controls.moveForward(((k.has('KeyW')?1:0)-(k.has('KeyS')?1:0))*v);
+  freeCam.controls.moveRight(((k.has('KeyD')?1:0)-(k.has('KeyA')?1:0))*v);
+  camera.position.y+=((k.has('Space')?1:0)-(k.has('KeyC')?1:0))*v;
+  camera.aspect=innerWidth/innerHeight;camera.fov=60;camera.updateProjectionMatrix();
+}
+resetBtn.after(bgSel,weatherSel,bellBtn,freeBtn);
 genBox.onsubmit=async(e)=>{
   e.preventDefault();
   const [inp,sec]=genBox.querySelectorAll('input,select'),btn=genBox.querySelector('button'),prompt=inp.value.trim();
@@ -219,7 +237,7 @@ function frame(){
   const c=calibration.data,P=c.parallax??1,hl=Math.max(.001,c.smoothing??0);
   dampSpring(viewEye,viewVel,eye,hl,dt);const rest=restEye;
   const ve={x:rest.x+(viewEye.x-rest.x)*P,y:rest.y+(viewEye.y-rest.y)*P,z:rest.z+(viewEye.z-rest.z)*P};
-  const vp=viewport();spatial.update({x:(ve.x-vp.ox)*K,y:(ve.y-vp.oy)*K,z:ve.z*K});
+  if(freeCam.on)flyFreeCam(dt);else{const vp=viewport();spatial.update({x:(ve.x-vp.ox)*K,y:(ve.y-vp.oy)*K,z:ve.z*K})}
   if(character){character.lookTarget=camera.position;character.update(dt);const c=character.bones['センター'].getWorldPosition(blob.position);stage.worldToLocal(c);c.y=.01}
   debugPanel.textContent=`filtered eye (m)\nx ${eye.x.toFixed(3)}\ny ${eye.y.toFixed(3)}\nz ${eye.z.toFixed(3)}\n\nraw z ${rawEye.z.toFixed(3)}\nHFOV ${calibration.data.cameraHFovDeg.toFixed(1)}°\nK ${K.toFixed(1)}`;
   crossing.tick(clock.elapsedTime,dt);weather.tick(clock.elapsedTime,dt);foliage?.tick(clock.elapsedTime);gi.tick(REFS.emitters);
