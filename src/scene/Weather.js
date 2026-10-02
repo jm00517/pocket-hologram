@@ -148,14 +148,15 @@ function wetRoad() {
           vec2 rip = drips(pm * 1.4) + wind;
           vec4 uvr = vUvR; uvr.xy += (base.rg - 0.35) * 0.05 * (1.0 - puddle) * uvr.w; // damp asphalt: reflection broken up by the grain
           uvr.xy += rip * 0.006 * puddle * uvr.w;
-          vec3 refl = texture2DProj(tDiffuse, uvr).rgb;
+          vec3 refl = textureLod(tDiffuse, uvr.xy / uvr.w, mix(4.5, 0.0, puddle)).rgb; // damp film: a low mip = soft, blurry sheen
           vec3 V = normalize(cameraPosition - vWorld);
           float fres = 0.05 + 0.95 * pow(1.0 - max(V.y, 0.0), 5.0);
-          float k = mix(0.03 + 0.2 * fres, 0.7 + 0.25 * fres, puddle); // damp asphalt only sheens at grazing angles; puddles mirror
+          float k = mix(0.02 + 0.12 * fres, 0.7 + 0.25 * fres, puddle); // damp asphalt: faint sheen at grazing angles; puddles mirror
           gl_FragColor = vec4(mix(base * ambient * 0.7, refl, k), 1.0);
         }`,
     },
   });
+  const rt = r.getRenderTarget().texture; rt.generateMipmaps = true; rt.minFilter = THREE.LinearMipmapLinearFilter;
   r.material.userData.outlineParameters = { visible: false };
   r.rotation.x = -Math.PI / 2;
   r.position.copy(REFS.road.position).setY(0.006);
