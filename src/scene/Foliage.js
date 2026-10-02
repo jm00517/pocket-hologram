@@ -4,7 +4,7 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { DRACOLoader } from 'three/addons/loaders/DRACOLoader.js';
-import { REFS } from './Crossing.js';
+import { REFS, groundY } from './Crossing.js';
 
 const MODELS = 'assets/polyhaven/models/';
 const TRACK_Z = -11;
@@ -65,7 +65,7 @@ function grassField(count) {
     if (z < NEAR_Z) continue;
     q.setFromEuler(new THREE.Euler((Math.random() - 0.5) * 0.35, Math.random() * Math.PI * 2, (Math.random() - 0.5) * 0.35));
     s.set(1, 0.55 + Math.random() * 0.9, 1);
-    mesh.setMatrixAt(n, m.compose(new THREE.Vector3(x, 0, z), q, s));
+    mesh.setMatrixAt(n, m.compose(new THREE.Vector3(x, groundY(z), z), q, s));
     mesh.setColorAt(n, c.setHSL(0.2 + Math.random() * 0.08, 0.35 + Math.random() * 0.15, 0.5 + Math.random() * 0.25)); // olive..green, some dry
     n++;
   }
@@ -113,7 +113,7 @@ function instance(model, transforms, { shadows = true, wind: w } = {}) {
   });
   return group;
 }
-const place = (x, z, scale, rotY = Math.random() * 6.28) => new THREE.Matrix4().compose(new THREE.Vector3(x, 0, z), new THREE.Quaternion().setFromEuler(new THREE.Euler(0, rotY, 0)), new THREE.Vector3().setScalar(scale));
+const place = (x, z, scale, rotY = Math.random() * 6.28) => new THREE.Matrix4().compose(new THREE.Vector3(x, groundY(z), z), new THREE.Quaternion().setFromEuler(new THREE.Euler(0, rotY, 0)), new THREE.Vector3().setScalar(scale));
 function verge(count, minX, maxX, z0, z1, scale) {
   const out = [];
   for (let a = 0; a < count; a++) {

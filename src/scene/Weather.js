@@ -5,7 +5,7 @@
 import * as THREE from 'three';
 import { RGBELoader } from 'three/addons/loaders/RGBELoader.js';
 import { Reflector } from 'three/addons/objects/Reflector.js';
-import { REFS } from './Crossing.js';
+import { REFS, groundY } from './Crossing.js';
 
 const PH = 'assets/polyhaven/';
 const deg = THREE.MathUtils.degToRad;
@@ -120,8 +120,11 @@ function wetRoad() {
     }
     const t = new THREE.CanvasTexture(c); t.wrapS = t.wrapT = THREE.RepeatWrapping; return t;
   })();
-  const { width: RW, height: RL } = REFS.road.geometry.parameters;
-  const r = new Reflector(new THREE.PlaneGeometry(RW, RL), {
+  const { width: RW, length: RL, z: RZ } = REFS.roadSpan;
+  // follows the hill: local z of the rotated plane is world height (the mirror plane stays flat; the slope is gentle)
+  const geo = new THREE.PlaneGeometry(RW, RL, 1, 88), gp = geo.attributes.position;
+  for (let i = 0; i < gp.count; i++) gp.setZ(i, groundY(RZ - gp.getY(i)));
+  const r = new Reflector(geo, {
     textureWidth: Math.min(1024, innerWidth / 2), textureHeight: Math.min(1024, innerHeight / 2), clipBias: 0.002, // half res: only the puddles show it sharply
     shader: {
       uniforms: {
@@ -172,7 +175,7 @@ function wetRoad() {
   const rt = r.getRenderTarget().texture; rt.generateMipmaps = true; rt.minFilter = THREE.LinearMipmapLinearFilter;
   r.material.userData.outlineParameters = { visible: false };
   r.rotation.x = -Math.PI / 2;
-  r.position.copy(REFS.road.position).setY(0.006);
+  r.position.set(0, 0.006, RZ);
   return r;
 }
 

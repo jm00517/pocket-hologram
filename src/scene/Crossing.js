@@ -7,11 +7,50 @@ import * as THREE from 'three';
 import { Lensflare, LensflareElement } from 'three/addons/objects/Lensflare.js';
 
 const ROAD_LEN = 17.6;
+// The hill: flat where she stands, then the road drops HILL_DROP m to the crossing (a cosine ramp between
+// HILL_TOP and HILL_FOOT). Everything from the crossing to the sea sits at the foot, so from her eye line the
+// sea shows over the sea wall like it does looking down the real Kamakura-Kokomae slope.
+const HILL_TOP = -1.2, HILL_FOOT = -7.2, HILL_DROP = 1.0;
+export function groundY(z) {
+  if (z >= HILL_TOP) return 0;
+  if (z <= HILL_FOOT) return -HILL_DROP;
+  const t = (HILL_TOP - z) / (HILL_TOP - HILL_FOOT);
+  return -HILL_DROP * (0.5 - 0.5 * Math.cos(Math.PI * t));
+}
+// bake a ground-hugging mesh into group space and bend it over the hill (needs segments along z)
+function drape(mesh) {
+  mesh.updateMatrix(); mesh.geometry.applyMatrix4(mesh.matrix);
+  mesh.position.set(0, 0, 0); mesh.rotation.set(0, 0, 0); mesh.scale.set(1, 1, 1);
+  const p = mesh.geometry.attributes.position;
+  for (let i = 0; i < p.count; i++) p.setY(i, p.getY(i) + groundY(p.getZ(i)));
+  mesh.geometry.computeVertexNormals(); mesh.userData.draped = true;
+  return mesh;
+}
+// after the scene is built: props sit at groundY(their z); lines and instances bend per point/instance
+function settle(g) {
+  const m = new THREE.Matrix4(), v = new THREE.Vector3();
+  const visit = (o) => {
+    if (o.userData.draped) return;
+    if (o.userData.settleChildren) { o.children.forEach(visit); return; }
+    if (o.isLine) {
+      const p = o.geometry.attributes.position;
+      for (let i = 0; i < p.count; i++) p.setY(i, p.getY(i) + groundY(p.getZ(i) + o.position.z));
+      return;
+    }
+    if (o.isInstancedMesh) {
+      for (let i = 0; i < o.count; i++) { o.getMatrixAt(i, m); v.setFromMatrixPosition(m); m.setPosition(v.x, v.y + groundY(v.z + o.position.z), v.z); o.setMatrixAt(i, m); }
+      o.instanceMatrix.needsUpdate = true;
+      return;
+    }
+    o.position.y += groundY(o.position.z);
+  };
+  g.children.forEach(visit);
+}
 const TRACK_Z = -11, CYCLE = 42, TRAIN_SPEED = 17; // m, s, m/s
 const SUN_DIR = new THREE.Vector3(-0.45, 0.62, 0.64).normalize(); // high, front-left: lights the face
 
 // Handles the weather system restyles (filled while building)
-export const REFS = { walls: [], roofs: [], leaves: [], windows: [], nightLights: [], redLights: [], lowTrees: [], emitters: [], vending: [], neonSigns: [], neonHaze: null, sea: null, foam: null, sand: null };
+export const REFS = { walls: [], roofs: [], leaves: [], windows: [], nightLights: [], redLights: [], lowTrees: [], emitters: [], vending: [], neonSigns: [], neonHaze: null, roadSpan: null, sea: null, foam: null, sand: null };
 // emitters: things that glow onto the character in real time (GI.js). { obj, color, power() 0..1, range in m,
 // facing?: emits only out of obj's +z (a lit panel) }
 const mats = new Map();
@@ -128,24 +167,27 @@ export function bakeSky(renderer) {
 // --- ground, road, rails ---------------------------------------------------------------------------
 function ground(g) {
   const grassTex = canvasTex(256, 256, speckle('#86c068', [100, 60], 3500, 2), [120, 120]);
-  g.add(REFS.ground = shadows(box(400, 0.1, 250, pbr('#9ad276', { map: grassTex, roughness: 0.95 }), 0, -0.06, -26 + 125), false)); // ends at the sea wall
+  const grass = new THREE.Mesh(new THREE.PlaneGeometry(400, 250, 1, 250), pbr('#9ad276', { map: grassTex, roughness: 0.95 }));
+  grass.rotation.x = -Math.PI / 2; grass.position.set(0, -0.01, -26 + 125); grass.receiveShadow = true; // ends at the sea wall
+  g.add(REFS.ground = drape(grass));
   const asphalt = canvasTex(512, 512, speckle('#5f6166', [78, 48], 9000, 1.6), [3, 6]);
   const rough = canvasTex(256, 256, speckle('#d0d0d0', [150, 105], 4000, 2), [3, 6], false);
   // runs down from the viewer, over the tracks, and ends at Route 134 (z -17.1)
-  const road = new THREE.Mesh(new THREE.PlaneGeometry(6, ROAD_LEN), pbr('#ffffff', { map: asphalt, roughnessMap: rough, roughness: 0.85 }));
+  const road = new THREE.Mesh(new THREE.PlaneGeometry(6, ROAD_LEN, 1, 88), pbr('#ffffff', { map: asphalt, roughnessMap: rough, roughness: 0.85 }));
   road.rotation.x = -Math.PI / 2; road.position.set(0, 0.002, 0.5 - ROAD_LEN / 2); road.receiveShadow = true;
-  REFS.road = road;
+  REFS.roadSpan = { width: 6, length: ROAD_LEN, z: 0.5 - ROAD_LEN / 2 };
+  REFS.road = drape(road);
   g.add(road);
   const paint = pbr('#d6d8d4', { roughness: 0.75 }); // worn road paint, not pure white: full sun pushed it past the bloom threshold
-  for (const sx of [-1, 1]) g.add(shadows(box(0.15, 0.012, ROAD_LEN, paint, sx * 2.75, 0.008, 0.5 - ROAD_LEN / 2), false));
-  g.add(shadows(box(5.3, 0.012, 0.35, paint, 0, 0.01, -6.6), false));
+  for (const sx of [-1, 1]) { const l = new THREE.Mesh(new THREE.BoxGeometry(0.15, 0.012, ROAD_LEN, 1, 1, 88), paint); l.position.set(sx * 2.75, 0.008, 0.5 - ROAD_LEN / 2); g.add(shadows(drape(l), false)); }
+  { const l = new THREE.Mesh(new THREE.BoxGeometry(5.3, 0.012, 0.35, 1, 1, 2), paint); l.position.set(0, 0.012, -6.6); g.add(shadows(drape(l), false)); }
   const tomare = canvasTex(512, 256, (x, w, h) => {
     x.fillStyle = '#d6d8d4'; x.font = 'bold 200px "Yu Gothic","Meiryo",sans-serif'; x.textAlign = 'center'; x.textBaseline = 'middle';
     x.save(); x.translate(w / 2, h / 2); x.scale(1, 1.25); x.fillText('止まれ', 0, 0); x.restore();
   });
-  const t = noOutline(new THREE.Mesh(new THREE.PlaneGeometry(3.6, 2.6), new THREE.MeshStandardMaterial({ map: tomare, transparent: true, depthWrite: false, roughness: 0.75 })));
-  t.rotation.x = -Math.PI / 2; t.position.set(0, 0.014, -4.3); t.receiveShadow = true;
-  g.add(t);
+  const t = noOutline(new THREE.Mesh(new THREE.PlaneGeometry(3.6, 2.6, 1, 13), new THREE.MeshStandardMaterial({ map: tomare, transparent: true, depthWrite: false, roughness: 0.75 })));
+  t.rotation.x = -Math.PI / 2; t.position.set(0, 0.016, -4.3); t.receiveShadow = true;
+  g.add(drape(t));
   // manhole
   const mh = canvasTex(256, 256, (x, w) => {
     x.fillStyle = '#4b4f55'; x.beginPath(); x.arc(w / 2, w / 2, w / 2 - 2, 0, 7); x.fill();
@@ -399,7 +441,7 @@ function vendingCorner(g) {
     m.userData.outlineParameters = { visible: false };
     const sp = new THREE.Sprite(m); sp.position.set(-3.6, 0.5, -1.6 - i * 1.12); sp.scale.set(3.2, 1.6, 1); haze.add(sp);
   });
-  g.add(haze); REFS.neonHaze = haze;
+  haze.userData.settleChildren = true; g.add(haze); REFS.neonHaze = haze;
 }
 
 // Snack-bar A-frame on the verge behind her: pink neon script, low to the ground, so in the neon preset it
@@ -576,6 +618,7 @@ export function createCrossing(renderer) {
     }
   }
   const tr = train(g, glows);
+  settle(g);
   // Blue Archive look: ink outlines on the character only, never on the background
   g.traverse((o) => { if (o.material) noOutline(o); });
 
