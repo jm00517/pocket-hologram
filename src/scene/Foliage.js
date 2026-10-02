@@ -76,28 +76,38 @@ function grassField(count) {
 const gltf = new GLTFLoader().setDRACOLoader(new DRACOLoader().setDecoderPath('https://www.gstatic.com/draco/versioned/decoders/1.5.7/'));
 // trees use the real-time version made by scripts/lighten_tree.py
 const FILE = { jacaranda_tree: 'jacaranda_tree/jacaranda_tree_rt.glb' };
-async function parts(name) {
+// Poly Haven plant files often hold several variants laid out ~1 m apart (fern_02_a..d). Each variant is
+// re-centred and gets its own share of the placements; parts of one plant (sorrel leaves) stay together.
+async function variants(name) {
   const g = await gltf.loadAsync(MODELS + (FILE[name] ?? `${name}/${name}.gltf`));
   g.scene.updateMatrixWorld(true);
-  const out = [];
-  g.scene.traverse((o) => {
-    if (!o.isMesh) return;
-    const geo = o.geometry.clone().applyMatrix4(o.matrixWorld);
-    const mat = o.material;
-    mat.transparent = false; mat.alphaTest = 0.5; mat.depthWrite = true; // leaves are real geometry; skip blend sorting
-    out.push({ geo, mat });
+  const kids = g.scene.children, spread = Math.max(...kids.map((k) => Math.hypot(k.position.x, k.position.z)));
+  const groups = spread > 0.5 ? kids.map((k) => [k, k.position.clone()]) : [[g.scene, new THREE.Vector3()]];
+  return groups.map(([root, origin]) => {
+    const out = [];
+    root.traverse((o) => {
+      if (!o.isMesh) return;
+      const geo = o.geometry.clone().applyMatrix4(o.matrixWorld).translate(-origin.x, -origin.y, -origin.z);
+      const mat = o.material;
+      mat.transparent = false; mat.alphaTest = 0.5; mat.depthWrite = true; // leaves are real geometry; skip blend sorting
+      out.push({ geo, mat });
+    });
+    return out;
   });
-  return out;
 }
-function instance(pieces, transforms, { shadows = true, wind: w } = {}) {
+function instance(model, transforms, { shadows = true, wind: w } = {}) {
   const group = new THREE.Group();
-  for (const { geo, mat } of pieces) {
-    if (w) { geo.computeBoundingBox(); windy(mat, w, geo.boundingBox.max.y || 1); }
-    const im = new THREE.InstancedMesh(geo, mat, transforms.length);
-    transforms.forEach((t, i) => im.setMatrixAt(i, t));
-    im.castShadow = shadows; im.receiveShadow = true;
-    group.add(im);
-  }
+  model.forEach((pieces, v) => {
+    const ts = transforms.filter((_, i) => i % model.length === v);
+    if (!ts.length) return;
+    for (const { geo, mat } of pieces) {
+      if (w && !mat.userData.windy) { geo.computeBoundingBox(); windy(mat, w, geo.boundingBox.max.y || 1); mat.userData.windy = true; }
+      const im = new THREE.InstancedMesh(geo, mat, ts.length);
+      ts.forEach((t, i) => im.setMatrixAt(i, t));
+      im.castShadow = shadows; im.receiveShadow = true;
+      group.add(im);
+    }
+  });
   return group;
 }
 const place = (x, z, scale, rotY = Math.random() * 6.28) => new THREE.Matrix4().compose(new THREE.Vector3(x, 0, z), new THREE.Quaternion().setFromEuler(new THREE.Euler(0, rotY, 0)), new THREE.Vector3().setScalar(scale));
@@ -132,12 +142,13 @@ function impostor(renderer, treeGroup) {
 export async function addFoliage(g, renderer, { models = true } = {}) {
   const has = models && await fetch(`${MODELS}fern_02/fern_02.gltf`, { method: 'HEAD' }).then((r) => r.ok, () => false);
   const grass = grassField(42000);
+  grass.userData.noAO = true;
   g.add(grass);
   REFS.grass = grass;
   if (REFS.tufts) REFS.tufts.visible = false; // old card grass
   if (!has) return { tick(t) { wind.value = t; } };
 
-  const [fern, weed, sorrel, shrub, dandelion, tree] = await Promise.all(['fern_02', 'weed_plant_02', 'shrub_sorrel_01', 'shrub_04', 'dandelion_01', 'jacaranda_tree'].map(parts));
+  const [fern, weed, sorrel, shrub, dandelion, tree] = await Promise.all(['fern_02', 'weed_plant_02', 'shrub_sorrel_01', 'shrub_04', 'dandelion_01', 'jacaranda_tree'].map(variants));
   const plants = new THREE.Group();
   plants.add(instance(fern, verge(70, 3.4, 8, 0, -45, [0.7, 1.2]), { wind: 0.05 }));
   plants.add(instance(weed, verge(90, 3.1, 7, 1, -55, [0.8, 1.4]), { wind: 0.06 }));
@@ -147,9 +158,10 @@ export async function addFoliage(g, renderer, { models = true } = {}) {
   // hero trees close to the crossing, one each side
   const heroes = instance(tree, [place(-8.5, -4.5, 0.55, 0.6), place(9.5, -19, 0.6, 2.2)], { wind: 0.12 });
   plants.add(heroes);
+  plants.userData.noAO = true;
   g.add(plants);
   REFS.plants = plants;
-  for (const p of tree) if (/leaves/i.test(p.mat.name)) { REFS.leaves.push(p.mat); p.mat.userData.dry = { color: p.mat.color.clone(), map: p.mat.map, normalMap: p.mat.normalMap, roughnessMap: p.mat.roughnessMap, roughness: p.mat.roughness }; }
+  for (const p of tree.flat()) if (/leaves/i.test(p.mat.name)) { REFS.leaves.push(p.mat); p.mat.userData.dry = { color: p.mat.color.clone(), map: p.mat.map, normalMap: p.mat.normalMap, roughnessMap: p.mat.roughnessMap, roughness: p.mat.roughness }; }
 
   // distant treeline: impostors of the hero tree replace the low-poly blobs
   const imp = impostor(renderer, instance(tree, [place(0, 0, 1, 0)], { shadows: false }));

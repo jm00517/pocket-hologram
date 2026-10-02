@@ -200,7 +200,6 @@ export function createWeather({ renderer, scene, crossing, post, ambient, key })
       restoreDry();
       if (!w.hdri) { // stylised sky from Crossing.fit
         crossing.fit(scene, U, { force: true });
-        for (const h of REFS.hills) h.visible = true;
         renderer.toneMappingExposure = 1; post.grade(null); post.bloom.strength = 0.35; post.bloom.threshold = 1.15;
         ambient.color.set('#aaaaaa'); ambient.intensity = 1.1; key.color.set('#ffffff'); key.intensity = 0.6;
         crossing.flareHolder.visible = true; crossing.redPower = 0;
@@ -209,7 +208,6 @@ export function createWeather({ renderer, scene, crossing, post, ambient, key })
         return current;
       }
       const sky = await loadSky(renderer, w.hdri);
-      for (const h of REFS.hills) h.visible = false; // flat toy hills look wrong under a photo sky
       // rotate the photo so its sun sits at the preset's azimuth; the light uses the same direction
       const az0 = Math.atan2(sky.sun.x, sky.sun.z), a = deg(w.az) - az0;
       scene.background = sky.tex; scene.environment = sky.env;
