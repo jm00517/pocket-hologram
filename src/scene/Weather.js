@@ -18,7 +18,7 @@ export const WEATHERS = {
     char: { amb: ['#b4b4b4', 1.1], key: ['#ffffff', 0.7] }, grade: { tint: [1, 1, 1], sat: 1.06, contrast: 1.03, sepia: 0, vignette: 0.12 }, bloom: 0.3,
   },
   sunset: {
-    label: '노을', hdri: 'sunset', az: 228, minElev: 6, env: 0.8, bg: 0.6, exposure: 0.85, sun: ['#ffa458', 3.0], fog: ['#d9946c', 60, 380],
+    label: '노을', hdri: 'sunset', seaReflect: 0.25, az: 228, minElev: 6, env: 0.8, bg: 0.6, exposure: 0.85, sun: ['#ffa458', 3.0], fog: ['#d9946c', 60, 380],
     char: { amb: ['#d9a98c', 0.85], key: ['#ffc58c', 0.8] }, grade: { tint: [1.05, 0.98, 0.9], sat: 1.0, contrast: 1.1, sepia: 0.11, vignette: 0.38 }, bloom: 0.12, bloomThreshold: 1.8, flare: false, // the low sun is already in the photo; flare + bloom smeared it
   },
   // char: her direct light (sun + key) must clearly beat the ambient, so the face sits in the toon ramp's lit band
@@ -258,6 +258,7 @@ export function createWeather({ renderer, scene, crossing, post, ambient, key })
       ambient.color.set(w.char.amb[0]); ambient.intensity = w.char.amb[1];
       key.color.set(w.char.key[0]); key.intensity = w.char.key[1];
       key.position.copy(dir.x > 0 ? new THREE.Vector3(1, 1, 1) : new THREE.Vector3(-1, 1, 1)); // always from the viewer's side
+      REFS.sea?.setReflect(w.seaReflect ?? 0.6);
       post.grade(w.grade); post.bloom.strength = w.bloom; post.bloom.threshold = w.bloomThreshold ?? 1.15;
 
       // wet road

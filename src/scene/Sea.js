@@ -61,7 +61,7 @@ function foamTex() {
 
 export function createSea() {
   const uniforms = {
-    uTime: { value: 0 }, uU: { value: 1 },
+    uTime: { value: 0 }, uU: { value: 1 }, uRefl: { value: 1 },
     tDetail: { value: detailNormals() }, tFoam: { value: foamTex() },
     // clear water: sand showing through at the edge, turquoise, sky blue, cobalt offshore; darker reef/seagrass
     uSandTint: { value: new THREE.Color('#bfe9e0') }, uShallow: { value: new THREE.Color('#45c9c6') },
@@ -73,7 +73,7 @@ export function createSea() {
     return `seaWave(p, vec2(${(dx / l).toFixed(4)}, ${(dz / l).toFixed(4)}), ${k.toFixed(4)}, ${(k * c).toFixed(4)}, ${A.toFixed(3)} * amp, ${Q.toFixed(3)}, disp, nrm);`;
   }).join('\n');
   const make = (ampScale) => {
-    const m = new THREE.MeshStandardMaterial({ color: '#ffffff', roughness: 0.05, metalness: 0.05, envMapIntensity: 0.55, fog: false });
+    const m = new THREE.MeshStandardMaterial({ color: '#ffffff', roughness: 0.05, metalness: 0.05, fog: false });
     m.onBeforeCompile = (s) => {
       Object.assign(s.uniforms, uniforms, { uAmp: { value: ampScale } });
       s.vertexShader = s.vertexShader
@@ -101,7 +101,7 @@ export function createSea() {
         .replace('#include <begin_vertex>', `vec3 transformed = position + disp; vSea = transformed;`);
       s.fragmentShader = s.fragmentShader
         .replace('#include <common>', `#include <common>
-          uniform float uTime, uU; uniform sampler2D tDetail, tFoam; uniform vec3 uSandTint, uShallow, uMid, uDeep, uReef, uHaze;
+          uniform float uTime, uU, uRefl; uniform sampler2D tDetail, tFoam; uniform vec3 uSandTint, uShallow, uMid, uDeep, uReef, uHaze;
           varying vec3 vSea; varying float vCrest; varying vec3 vT, vB;`)
         .replace('#include <color_fragment>', `#include <color_fragment>
           float seaDist = length(vViewPosition) / uU;          // metres from the eye
@@ -129,6 +129,8 @@ export function createSea() {
           vec3 nd = normalize(vec3((n1.xy + n2.xy) * 0.07, n1.z * n2.z)); // broad and soft: dense ripples turned the sky reflection into busy speckle
           nd = normalize(mix(nd, vec3(0.0, 0.0, 1.0), smoothstep(30.0, 350.0, seaDist))); // far ripples alias into radial streaks
           normal = normalize(vT * nd.x + vB * nd.y + normal * nd.z);`)
+        .replace('#include <lights_fragment_maps>', `#include <lights_fragment_maps>
+          radiance *= uRefl; // sky reflection only (three ignores envMapIntensity under scene.environment)`)
         .replace('#include <emissivemap_fragment>', `#include <emissivemap_fragment>
           // caustic web on the shallow bottom: bright where the two ripple layers focus light; scales with the sun
           #if NUM_DIR_LIGHTS > 0
@@ -159,6 +161,8 @@ export function createSea() {
   for (const o of group.children) o.material.userData.outlineParameters = { visible: false };
   return {
     group,
+    // per weather: a bright low sky (sunset) mirrored at grazing angles burns the whole sea to cream
+    setReflect(v) { uniforms.uRefl.value = v; },
     tick(t, fog) { uniforms.uTime.value = t; if (fog) uniforms.uHaze.value.copy(fog.color); },
     setScale(U) { uniforms.uU.value = U; },
   };
