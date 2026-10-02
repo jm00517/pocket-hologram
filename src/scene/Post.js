@@ -90,7 +90,7 @@ export function createPost(renderer, scene, camera, outline) {
   const grade = new ShaderPass(GradeShader);
   composer.addPass(grade);
   composer.addPass(smaa);
-  const perf = new URLSearchParams(location.search).has('perf') && gpuProfiler(renderer, composer);
+  const perf = new URLSearchParams(location.search).has('perf') ? gpuProfiler(renderer, composer) : null;
   return {
     composer, ao, bloom,
     setSize(w, h, ratio) {

@@ -124,14 +124,14 @@ function ground(g) {
   road.rotation.x = -Math.PI / 2; road.position.set(0, 0.002, -89.5); road.receiveShadow = true;
   REFS.road = road;
   g.add(road);
-  const paint = pbr('#f6f8fa', { roughness: 0.55 });
+  const paint = pbr('#d6d8d4', { roughness: 0.75 }); // worn road paint, not pure white: full sun pushed it past the bloom threshold
   for (const sx of [-1, 1]) g.add(shadows(box(0.15, 0.012, 180, paint, sx * 2.75, 0.008, -89.5), false));
   g.add(shadows(box(5.3, 0.012, 0.35, paint, 0, 0.01, -6.6), false));
   const tomare = canvasTex(512, 256, (x, w, h) => {
-    x.fillStyle = '#f6f8fa'; x.font = 'bold 200px "Yu Gothic","Meiryo",sans-serif'; x.textAlign = 'center'; x.textBaseline = 'middle';
+    x.fillStyle = '#d6d8d4'; x.font = 'bold 200px "Yu Gothic","Meiryo",sans-serif'; x.textAlign = 'center'; x.textBaseline = 'middle';
     x.save(); x.translate(w / 2, h / 2); x.scale(1, 1.25); x.fillText('止まれ', 0, 0); x.restore();
   });
-  const t = noOutline(new THREE.Mesh(new THREE.PlaneGeometry(3.6, 2.6), new THREE.MeshStandardMaterial({ map: tomare, transparent: true, depthWrite: false, roughness: 0.55 })));
+  const t = noOutline(new THREE.Mesh(new THREE.PlaneGeometry(3.6, 2.6), new THREE.MeshStandardMaterial({ map: tomare, transparent: true, depthWrite: false, roughness: 0.75 })));
   t.rotation.x = -Math.PI / 2; t.position.set(0, 0.014, -4.3); t.receiveShadow = true;
   g.add(t);
   // manhole

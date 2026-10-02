@@ -14,7 +14,7 @@ const deg = THREE.MathUtils.degToRad;
 export const WEATHERS = {
   anime: { label: '애니 맑음' },
   day: {
-    label: '맑음', hdri: 'day', az: 305, env: 0.85, bg: 1, exposure: 1, sun: ['#fff3df', 3.4], fog: ['#d8e2ea', 80, 480],
+    label: '맑음', hdri: 'day', az: 305, env: 0.85, bg: 1, skySat: 1.6, exposure: 1, sun: ['#fff3df', 3.4], fog: ['#c9dcef', 80, 480],
     char: { amb: ['#b4b4b4', 1.1], key: ['#ffffff', 0.7] }, grade: { tint: [1, 1, 1], sat: 1.06, contrast: 1.03, sepia: 0, vignette: 0.12 }, bloom: 0.3,
   },
   sunset: {
@@ -37,7 +37,7 @@ export const WEATHERS = {
 
 // --- HDRI sky: load, find the sun in the photo ---------------------------------------------------------
 const skies = {};
-async function loadSky(renderer, name) {
+async function loadSky(renderer, name, sat = 1) {
   if (skies[name]) return skies[name];
   const tex = await new RGBELoader().loadAsync(`${PH}hdri/${name}.hdr`);
   tex.mapping = THREE.EquirectangularReflectionMapping;
@@ -55,6 +55,14 @@ async function loadSky(renderer, name) {
   const pm = new THREE.PMREMGenerator(renderer);
   const env = pm.fromEquirectangular(tex).texture;
   pm.dispose();
+  if (sat !== 1) { // background only: the env map above was baked from the original, so lighting keeps its colour
+    const to = data instanceof Uint16Array ? THREE.DataUtils.toHalfFloat : (x) => x;
+    for (let i = 0; i < data.length; i += 4) {
+      const r = f(data[i]), g = f(data[i + 1]), b = f(data[i + 2]), L = 0.2126 * r + 0.7152 * g + 0.0722 * b;
+      data[i] = to(Math.max(0, L + (r - L) * sat)); data[i + 1] = to(Math.max(0, L + (g - L) * sat)); data[i + 2] = to(Math.max(0, L + (b - L) * sat));
+    }
+    tex.needsUpdate = true;
+  }
   return (skies[name] = { tex, env, sun });
 }
 
@@ -207,7 +215,7 @@ export function createWeather({ renderer, scene, crossing, post, ambient, key })
         if (reflector) reflector.visible = false; REFS.road.visible = true; if (snow) snow.visible = false; showPlants(true);
         return current;
       }
-      const sky = await loadSky(renderer, w.hdri);
+      const sky = await loadSky(renderer, w.hdri, w.skySat);
       // rotate the photo so its sun sits at the preset's azimuth; the light uses the same direction
       const az0 = Math.atan2(sky.sun.x, sky.sun.z), a = deg(w.az) - az0;
       scene.background = sky.tex; scene.environment = sky.env;
