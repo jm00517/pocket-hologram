@@ -11,6 +11,7 @@ import { createCrossing } from './scene/Crossing.js';
 import { createPost } from './scene/Post.js';
 import { createWeather } from './scene/Weather.js';
 import { addFoliage } from './scene/Foliage.js';
+import { createGI } from './scene/GI.js';
 import { Character, BUILTIN_MOTIONS, IDLE_POSE, DEFAULT_MODEL } from './character/Character.js';
 
 const $=s=>document.querySelector(s),canvas=$('#scene'),video=$('#camera'),status=$('#status'),debugPanel=$('#debugPanel'),calPanel=$('#calibration'),motionSel=$('#motion'),modelSel=$('#modelSel');
@@ -38,6 +39,9 @@ const post=createPost(renderer,scene,camera,outline);window.post=post; // debug
 // Background: the railway crossing (default) or the calibration grid room.
 const crossing=createCrossing(renderer);window.crossing=crossing; // debug
 const weather=createWeather({renderer,scene,crossing,post,ambient,key});window.weather=weather;
+const gi=createGI(renderer);window.gi=gi; // debug: gi.strength.value
+// re-shoot the character's bounce light whenever what surrounds her changes (weather, background)
+const captureGI=()=>character&&gi.capture(scene,character.mesh.getWorldPosition(new THREE.Vector3()).setY(stage.position.y+charHeight*.6),character.mesh);
 let foliage=null;const foliageLevel=new URLSearchParams(location.search).get('foliage')??'full'; // full | grass | off
 if(foliageLevel!=='off')addFoliage(crossing.group,renderer,{models:foliageLevel==='full'}).then(f=>foliage=f).catch(e=>console.error('foliage',e));
 let weatherName=new URLSearchParams(location.search).get('weather')||'sunset';
@@ -48,8 +52,8 @@ function applyBackground(){
   if(chamber)chamber.visible=!on;
   blob.material.opacity=on?0:1; // real sun shadows replace the blob
   if(!on)scene.background=new THREE.Color(0x03050a);
-  if(on){const U=charHeight/1.6;crossing.fit(scene,U);post.setScale(U);weather.set(weatherName,U).then(n=>{if(weatherSel)weatherSel.value=n})}
-  else{crossing.unfit(scene);post.grade(null);renderer.toneMappingExposure=1;ambient.color.set('#aaaaaa');ambient.intensity=2;key.color.set('#ffffff');key.intensity=2.5;key.position.set(-1,1,1)}
+  if(on){const U=charHeight/1.6;crossing.fit(scene,U);post.setScale(U);weather.set(weatherName,U).then(n=>{if(weatherSel)weatherSel.value=n;captureGI()})}
+  else{crossing.unfit(scene);post.grade(null);renderer.toneMappingExposure=1;ambient.color.set('#aaaaaa');ambient.intensity=2;key.color.set('#ffffff');key.intensity=2.5;key.position.set(-1,1,1);captureGI()}
 }
 
 // Scene units per meter. MMD physics breaks on scaled meshes, so instead of shrinking the model
@@ -99,6 +103,7 @@ async function loadCharacter(url,manager){
   const h=new THREE.Box3().setFromObject(mesh).getSize(new THREE.Vector3()).y;
   charHeight=h;
   stage.add(mesh);blob.scale.set(h*.45,h*.3,1);blob.visible=true;layout();
+  for(const m of [].concat(mesh.material))gi.patch(m);
   mesh.castShadow=true;if(!crossing.group.parent)stage.add(crossing.group);applyBackground();
   motionSel.innerHTML=['idle',...Object.keys(BUILTIN_MOTIONS).filter(n=>n!==IDLE_POSE)].map(n=>`<option>${n}</option>`).join('');
   // Library: every clip the director loaded (idle stands, fidgets, gestures), for previewing one by one.
@@ -129,7 +134,7 @@ bgSel.onchange=()=>{bg=bgSel.value;applyBackground()};
 const bellBtn=document.createElement('button');bellBtn.type='button';bellBtn.textContent='🔔 off';let bellOn=false;
 bellBtn.onclick=()=>{bellOn=!bellOn;crossing.setSound(bellOn);bellBtn.textContent=bellOn?'🔔 on':'🔔 off'};
 weatherSel=document.createElement('select');weatherSel.innerHTML=weather.list().map(([k,l])=>`<option value="${k}">${l}</option>`).join('');weatherSel.value=weatherName;
-weatherSel.onchange=()=>{weatherName=weatherSel.value;if(bg==='crossing')weather.set(weatherName,charHeight/1.6)};
+weatherSel.onchange=()=>{weatherName=weatherSel.value;if(bg==='crossing')weather.set(weatherName,charHeight/1.6).then(captureGI)};
 resetBtn.after(bgSel,weatherSel,bellBtn);
 genBox.onsubmit=async(e)=>{
   e.preventDefault();
