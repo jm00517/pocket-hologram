@@ -123,7 +123,7 @@ bgSel.onchange=()=>{bg=bgSel.value;applyBackground()};
 const bellBtn=document.createElement('button');bellBtn.type='button';bellBtn.textContent='🔔 종소리 꺼짐';let bellOn=false;
 bellBtn.onclick=()=>{bellOn=!bellOn;crossing.setSound(bellOn);bellBtn.textContent=bellOn?'🔔 종소리 켜짐':'🔔 종소리 꺼짐'};
 weatherSel=document.createElement('select');weatherSel.innerHTML=weather.list().map(([k,l])=>`<option value="${k}">${l}</option>`).join('');weatherSel.value=weatherName;
-weatherSel.onchange=()=>{weatherName=weatherSel.value;if(bg==='crossing')weather.set(weatherName,charHeight/1.6).then(()=>{captureGI();syncGfx()})};
+weatherSel.onchange=()=>{weatherName=weatherSel.value;if(bg==='crossing')weather.set(weatherName,charHeight/1.6).then(()=>{captureGI();gfxUndo.length=gfxRedo.length=0;syncGfx()})}; // a new weather is a new baseline
 // Free camera: F or the button toggles; click the view to grab the mouse (Esc releases). WASD move,
 // Space/C up/down, Shift fast. The head-coupled window view is suspended while it's on.
 const freeCam={on:false,keys:new Set(),controls:new PointerLockControls(camera,canvas)};
@@ -186,7 +186,22 @@ const GFX=[ // label, get, set, min, max, step
 ];
 const gfxCtl=$('#gfxCtl');
 gfxCtl.innerHTML=GFX.map(([l,,,mn,mx,st],i)=>`<label class="slider">${l}<input type="range" min="${mn}" max="${mx}" step="${st}" data-i="${i}"><output></output></label>`).join('')+'<button type="button" data-gfx-reset>날씨 기본값으로</button>';
-gfxCtl.querySelectorAll('input').forEach(el=>el.oninput=()=>{const v=+el.value;GFX[el.dataset.i][2](v);el.nextElementSibling.textContent=v.toFixed(2)});
+const setGfx=(i,v)=>{GFX[i][2](v);const el=gfxCtl.querySelector(`[data-i="${i}"]`);el.value=v;el.nextElementSibling.textContent=(+v).toFixed(2)};
+// undo history: one entry per drag (value before pointer-down/keyboard nudge), Ctrl+Z / Ctrl+Shift+Z or Ctrl+Y
+const gfxUndo=[],gfxRedo=[];
+gfxCtl.querySelectorAll('input').forEach(el=>{
+  const i=+el.dataset.i,mark=()=>{el._before??=GFX[i][1]()};
+  el.addEventListener('pointerdown',mark);el.addEventListener('keydown',mark);
+  el.oninput=()=>{mark();setGfx(i,+el.value)};
+  el.onchange=()=>{if(el._before!==undefined&&el._before!==+el.value){gfxUndo.push([i,el._before]);gfxRedo.length=0}el._before=undefined};
+});
+addEventListener('keydown',e=>{
+  if(!(e.ctrlKey||e.metaKey)||e.target.closest?.('input[type=text],textarea,select,#chat'))return;
+  const redo=e.code==='KeyY'||(e.code==='KeyZ'&&e.shiftKey),undo=e.code==='KeyZ'&&!e.shiftKey;
+  const [from,to]=undo?[gfxUndo,gfxRedo]:redo?[gfxRedo,gfxUndo]:[];
+  if(!from?.length)return;
+  e.preventDefault();const [i,v]=from.pop();to.push([i,GFX[i][1]()]);setGfx(i,v);
+});
 function syncGfx(){gfxCtl.querySelectorAll('input').forEach(el=>{const v=GFX[el.dataset.i][1]();el.value=v;el.nextElementSibling.textContent=(+v).toFixed(2)})}
 gfxCtl.querySelector('[data-gfx-reset]').onclick=()=>weatherSel.onchange();
 $('#drawer').addEventListener('toggle',e=>{if(e.target.open&&e.target.contains(gfxCtl))syncGfx()},true);
