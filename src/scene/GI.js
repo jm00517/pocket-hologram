@@ -46,21 +46,28 @@ export function createGI(renderer) {
             float giLum = dot( giIrr, vec3( 0.2126, 0.7152, 0.0722 ) );
             vec3 giTint = giLum > 1e-4 ? clamp( giIrr / giLum, 0.0, 2.0 ) : vec3( 1.0 );
             irradiance *= mix( vec3( 1.0 ), giTint, uGIStrength );
+            vec3 emIrr = vec3( 0.0 ), emRim = vec3( 0.0 );
             for ( int i = 0; i < ${MAX_EM}; i ++ ) {
               vec3 toEm = ( viewMatrix * vec4( uEmPos[ i ], 1.0 ) ).xyz - geometryPosition;
-              float d = length( toEm ), fall = clamp( 1.0 - d / uEmRange[ i ], 0.0, 1.0 );
+              // near-inverse-square inside the range: the nearest light owns her colour instead of every lamp in
+              // range adding up at full strength
+              float d = length( toEm ), x = clamp( d / uEmRange[ i ], 0.0, 1.0 ), fall = ( 1.0 - x ) * ( 1.0 - x ) / ( 1.0 + 16.0 * x * x );
               vec3 L = toEm / max( d, 1e-4 );
               // panel emitters (vending glass) only light what's in front of them
               fall *= dot( uEmNrm[ i ], uEmNrm[ i ] ) > 0.5 ? saturate( dot( ( viewMatrix * vec4( uEmNrm[ i ], 0.0 ) ).xyz, - L ) ) : 1.0;
               float wrap = clamp( ( dot( geometryNormal, L ) + 0.4 ) / 1.4, 0.0, 1.0 );
-              irradiance += uEmCol[ i ] * fall * wrap;
+              emIrr += uEmCol[ i ] * fall * wrap;
               // light from behind her (the crossing lamps) shows as a coloured rim on the silhouette, anime style
               // only the edge on the light's side: its direction projected onto the screen plane picks left/right
               vec3 Ls = L - geometryViewDir * dot( L, geometryViewDir );
               float side = saturate( dot( geometryNormal, Ls / max( length( Ls ), 1e-4 ) ) );
               float rim = pow( 1.0 - saturate( dot( geometryNormal, geometryViewDir ) ), 3.0 ) * saturate( dot( L, - geometryViewDir ) ) * mix( 0.1, 1.0, side );
-              reflectedLight.directSpecular += uEmCol[ i ] * fall * rim * 0.5;
+              emRim += uEmCol[ i ] * fall * rim * 0.5;
             }
+            // soft ceiling, hue kept: standing right against a row of lit machines used to stack a dozen emitters
+            // past the bloom threshold and she glowed like a lamp
+            irradiance += emIrr / ( 1.0 + max( emIrr.r, max( emIrr.g, emIrr.b ) ) * 0.9 );
+            reflectedLight.directSpecular += emRim / ( 1.0 + max( emRim.r, max( emRim.g, emRim.b ) ) * 1.5 );
             IncidentLight keyLight;
             keyLight.direction = normalize( ( viewMatrix * vec4( uKeyDir, 0.0 ) ).xyz );
             keyLight.color = uKeyColor;
