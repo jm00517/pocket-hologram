@@ -33,14 +33,14 @@ export const WEATHERS = {
     char: { amb: ['#cdd2d8', 0.65], key: ['#fafbff', 3.0] }, grade: { tint: [0.97, 0.99, 1.04], sat: 0.96, contrast: 1.02, sepia: 0, vignette: 0.26 }, bloom: 0.35, snow: 1, flare: false,
   },
   night: {
-    label: '밤', hdri: 'night', az: 120, minElev: 25, env: 0.35, bg: 0.75, exposure: 1.25, sun: ['#9fb3ff', 0.35], fog: ['#141c2e', 20, 260],
-    char: { amb: ['#8e9cc8', 0.55], key: ['#ffd2a0', 1.3] }, grade: { tint: [0.92, 0.96, 1.1], sat: 0.95, contrast: 1.08, sepia: 0, vignette: 0.45 }, bloom: 0.9, night: 1, flare: false,
+    label: '밤', hdri: 'night', skyTame: [0.4, 2.5], az: 120, minElev: 25, env: 0.35, bg: 0.75, exposure: 1.25, sun: ['#9fb3ff', 0.35], fog: ['#141c2e', 20, 260],
+    char: { amb: ['#8e9cc8', 0.55], key: ['#ffd2a0', 1.3] }, grade: { tint: [0.92, 0.96, 1.1], sat: 0.95, contrast: 1.08, sepia: 0, vignette: 0.45 }, bloom: 0.55, night: 1, flare: false,
   },
 };
 
 // --- HDRI sky: load, find the sun in the photo ---------------------------------------------------------
 const skies = {};
-async function loadSky(renderer, name, sat = 1) {
+async function loadSky(renderer, name, sat = 1, tame = null) {
   if (skies[name]) return skies[name];
   const tex = await new RGBELoader().loadAsync(`${PH}hdri/${name}.hdr`);
   tex.mapping = THREE.EquirectangularReflectionMapping;
@@ -58,11 +58,14 @@ async function loadSky(renderer, name, sat = 1) {
   const pm = new THREE.PMREMGenerator(renderer);
   const env = pm.fromEquirectangular(tex).texture;
   pm.dispose();
-  if (sat !== 1) { // background only: the env map above was baked from the original, so lighting keeps its colour
+  if (sat !== 1 || tame) { // background only: the env map above was baked from the original, so lighting is unchanged
     const to = data instanceof Uint16Array ? THREE.DataUtils.toHalfFloat : (x) => x;
     for (let i = 0; i < data.length; i += 4) {
       const r = f(data[i]), g = f(data[i + 1]), b = f(data[i + 2]), L = 0.2126 * r + 0.7152 * g + 0.0722 * b;
-      data[i] = to(Math.max(0, L + (r - L) * sat)); data[i + 1] = to(Math.max(0, L + (g - L) * sat)); data[i + 2] = to(Math.max(0, L + (b - L) * sat));
+      // tame = [knee, disc]: a real-exposure moon (~5e4) and its photographed halo (7-9x the sky, 14°+ wide)
+      // bloomed over half the screen. Keep a crisp disc, roll the halo off softly.
+      const k = !tame ? 1 : L > 50 ? tame[1] / L : 1 / (1 + L / tame[0]);
+      data[i] = to(Math.max(0, L + (r - L) * sat) * k); data[i + 1] = to(Math.max(0, L + (g - L) * sat) * k); data[i + 2] = to(Math.max(0, L + (b - L) * sat) * k);
     }
     tex.needsUpdate = true;
   }
@@ -223,7 +226,7 @@ export function createWeather({ renderer, scene, crossing, post, ambient, key })
         if (reflector) reflector.visible = false; REFS.road.visible = true; if (snow) snow.visible = false; showPlants(true);
         return current;
       }
-      const sky = await loadSky(renderer, w.hdri, w.skySat);
+      const sky = await loadSky(renderer, w.hdri, w.skySat, w.skyTame);
       // rotate the photo so its sun sits at the preset's azimuth; the light uses the same direction
       const az0 = Math.atan2(sky.sun.x, sky.sun.z), a = deg(w.az) - az0;
       scene.background = sky.tex; scene.environment = sky.env;
