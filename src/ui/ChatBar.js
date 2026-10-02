@@ -57,7 +57,26 @@ export function mountChatBar(getBehavior, controlsRoot) {
     say(answer);
   };
 
-  function say(text) {
+  // Kasane Teto voice via the local server (scripts/server.py /api/tts); falls back to browser TTS
+  let voice = null;
+  async function say(text) {
+    const beh = b();
+    if (!beh) return;
+    try {
+      const r = await fetch('api/tts', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text }) });
+      if (r.ok) {
+        const { audio, marks } = await r.json();
+        voice?.pause();
+        voice = new Audio('data:audio/wav;base64,' + audio);
+        voice.onplay = () => beh.speakTimed(marks);
+        voice.onended = () => { beh.stopSpeaking(); beh.setState('idle'); };
+        await voice.play();
+        return;
+      }
+    } catch { /* no server / no voice library */ }
+    browserSay(text);
+  }
+  function browserSay(text) {
     const beh = b();
     if (!beh) return;
     speechSynthesis.cancel();

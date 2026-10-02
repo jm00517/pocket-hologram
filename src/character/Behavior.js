@@ -82,6 +82,12 @@ export class Behavior {
     this.setState('speaking');
   }
 
+  // Start a mouth track from TTS mora marks [{ v: 'a'|'i'|'u'|'e'|'o'|'n', t: seconds }] (audio-accurate).
+  speakTimed(marks) {
+    this.speech = marks.length ? { marks, t: 0 } : null;
+    this.setState('speaking');
+  }
+
   stopSpeaking() { this.speech = null; if (this.state === 'speaking') this.setState('idle'); }
 
   morph(name, v) {
@@ -116,6 +122,17 @@ export class Behavior {
     if (this.speech) {
       const sp = this.speech;
       sp.t += dt;
+      if (sp.marks) {
+        const ms = sp.marks, last = ms[ms.length - 1];
+        let i = 0; while (i + 1 < ms.length && ms[i + 1].t <= sp.t) i++;
+        if (sp.t > last.t + 0.3) this.stopSpeaking();
+        else if (sp.t >= ms[0].t) {
+          const dur = Math.max(0.06, (ms[i + 1]?.t ?? ms[i].t + 0.14) - ms[i].t), ph = (sp.t - ms[i].t) / dur;
+          open = Math.sin(Math.PI * Math.min(1, ph * 1.2));
+          if (ms[i].v in target) target[ms[i].v] = 0.4 + 0.6 * open;
+          nod = Math.sin(sp.t * 8) * 0.015;
+        }
+      } else {
       const f = sp.t * sp.rate, idx = Math.floor(f);
       if (idx >= sp.vowels.length) this.stopSpeaking();
       else {
@@ -123,6 +140,7 @@ export class Behavior {
         open = Math.sin(Math.PI * Math.min(1, ph * 1.3)); // open then close within the syllable
         if (vw !== ' ') target[vw] = 0.4 + 0.6 * open;
         nod = Math.sin(f * Math.PI) * 0.02; // tiny bob with syllables
+      }
       }
     }
     const m = this.mouth, km = 1 - Math.exp(-dt * 25);
