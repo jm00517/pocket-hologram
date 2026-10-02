@@ -6,12 +6,12 @@
 //    her ambient with it: a sunset, the vending machine or a neon sign colours the side facing it, while the
 //    face's brightness stays flat (a luminance gradient on a toon face reads as muddy smudges).
 //  * emitters: things that blink or move (crossing lamps, vending machine, street lamps) can't wait for a
-//    capture, so tick() feeds up to 8 of them straight to the shader each frame: soft wrap lighting that tints
+//    capture, so tick() feeds up to MAX_EM of them straight to the shader each frame: soft wrap lighting that tints
 //    and slightly brightens the side facing them, in step with their own on/off.
 import * as THREE from 'three';
 import { LightProbeGenerator } from 'three/addons/lights/LightProbeGenerator.js';
 
-const MAX_EM = 8;
+const MAX_EM = 12;
 
 export function createGI(renderer) {
   const sh = { value: Array.from({ length: 9 }, () => new THREE.Vector3()) }, strength = { value: 0.6 };

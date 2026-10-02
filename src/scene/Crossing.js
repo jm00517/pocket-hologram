@@ -10,7 +10,7 @@ const TRACK_Z = -11, CYCLE = 42, TRAIN_SPEED = 17; // m, s, m/s
 const SUN_DIR = new THREE.Vector3(-0.45, 0.62, 0.64).normalize(); // high, front-left: lights the face
 
 // Handles the weather system restyles (filled while building)
-export const REFS = { walls: [], roofs: [], leaves: [], windows: [], nightLights: [], redLights: [], lowTrees: [], emitters: [] };
+export const REFS = { walls: [], roofs: [], leaves: [], windows: [], nightLights: [], redLights: [], lowTrees: [], emitters: [], vending: [], neonHaze: null };
 // emitters: things that glow onto the character in real time (GI.js). { obj, color, power() 0..1, range in m }
 const mats = new Map();
 function pbr(color, o = {}) {
@@ -266,7 +266,15 @@ function utilityPoles(g) {
 
 // Japanese drink machine: lit sample showcase behind glass (only the showcase glows), price tags and
 // push-button LEDs, then an unlit door with coin/bill slots, a tiny LCD and the take-out pocket.
-function vendingMachine(g, x, z, rotY, glows) {
+// style: door colour, showcase backlight tint, brand on the door.
+const VM_STYLES = {
+  cool: { door: '#1e5bb8', glow: '#d8ecff', brand: 'COOL DRINK' },
+  sakura: { door: '#e0217f', glow: '#ff3fc0', brand: 'SAKURA' },
+  aqua: { door: '#0096ad', glow: '#2fe0ff', brand: 'AQUA' },
+  night: { door: '#6b33c9', glow: '#9a5cff', brand: 'MIDNIGHT' },
+  matcha: { door: '#4e9c1a', glow: '#9dff3f', brand: 'MATCHA' },
+};
+function vendingMachine(g, x, z, rotY, style, { bins = true } = {}) {
   const drinks = [ // [label, cap/lid, bottle?]
     ['#e53935', '#c9ccd0'], ['#2e7d32', '#ffffff', 1], ['#f9a825', '#c9ccd0'], ['#1565c0', '#1565c0', 1], ['#6d4c41', '#c9ccd0'],
     ['#ffffff', '#43a047', 1], ['#212121', '#c9ccd0'], ['#00838f', '#ffffff', 1], ['#fb8c00', '#c9ccd0'], ['#8e24aa', '#c9ccd0'],
@@ -314,13 +322,13 @@ function vendingMachine(g, x, z, rotY, glows) {
     }
   };
   const SW = 512, SH = 600, caseMap = canvasTex(SW, SH, showcase(false)), caseGlow = canvasTex(SW, SH, showcase(true));
-  // door face: blue upper frame, white lower door with slots; only the LCD glows
+  // door face: coloured upper frame, white lower door with slots; only the LCD glows
   const doorDraw = (e) => (c, w, h) => {
-    c.fillStyle = e ? '#000' : '#1e5bb8'; c.fillRect(0, 0, w, h);
+    c.fillStyle = e ? '#000' : style.door; c.fillRect(0, 0, w, h);
     if (!e) {
       c.fillStyle = '#f4f7fa'; c.fillRect(0, h * 0.6, w, h * 0.4);
-      c.fillStyle = '#1e5bb8'; c.fillRect(0, h * 0.6, w, 8);
-      c.font = 'italic bold 22px sans-serif'; c.textAlign = 'center'; c.fillText('COOL DRINK', w * 0.34, h * 0.68);
+      c.fillStyle = style.door; c.fillRect(0, h * 0.6, w, 8);
+      c.font = 'italic bold 22px sans-serif'; c.textAlign = 'center'; c.fillText(style.brand, w * 0.34, h * 0.68);
       c.fillStyle = '#9aa3ab'; c.fillRect(w * 0.74, h * 0.635, 40, 60); // coin plate
       c.fillStyle = '#20252a'; c.fillRect(w * 0.74 + 17, h * 0.635 + 8, 6, 20); c.fillRect(w * 0.74 + 8, h * 0.635 + 38, 24, 12);
       c.fillStyle = '#2b3036'; c.fillRect(w * 0.74, h * 0.715, 40, 24); // bill acceptor
@@ -339,10 +347,10 @@ function vendingMachine(g, x, z, rotY, glows) {
   vm.add(box(1.0, 1.78, 0.04, [body, body, body, body, door, body], 0, 0.92, 0.36));
   // showcase: lit samples, framed and set back behind glass
   const sh = 0.86 * SH / SW, cy = 1.32;
-  const caseMat = new THREE.MeshStandardMaterial({ map: caseMap, emissive: '#ffffff', emissiveMap: caseGlow, emissiveIntensity: 0.55, roughness: 0.7 });
+  const caseMat = new THREE.MeshStandardMaterial({ map: caseMap, emissive: style.glow, emissiveMap: caseGlow, emissiveIntensity: 0.55, roughness: 0.7 });
   const sc = new THREE.Mesh(new THREE.PlaneGeometry(0.86, sh), caseMat);
-  sc.position.set(0, cy, 0.385); vm.add(sc); glows.push(caseMat);
-  REFS.emitters.push({ obj: sc, color: new THREE.Color('#d8ecff'), power: () => caseMat.emissiveIntensity, range: 5 });
+  sc.position.set(0, cy, 0.385); vm.add(sc); REFS.vending.push(caseMat);
+  REFS.emitters.push({ obj: sc, color: new THREE.Color(style.glow), power: () => caseMat.emissiveIntensity * 0.6, range: 5 });
   const frame = pbr('#c3cad1', { roughness: 0.3, metalness: 0.6 });
   for (const [w, h, fx, fy] of [[0.94, 0.04, 0, cy + sh / 2 + 0.02], [0.94, 0.04, 0, cy - sh / 2 - 0.02], [0.04, sh, -0.45, cy], [0.04, sh, 0.45, cy]]) vm.add(box(w, h, 0.05, frame, fx, fy, 0.405));
   const glass = new THREE.MeshStandardMaterial({ color: '#ffffff', transparent: true, opacity: 0.08, roughness: 0.02, metalness: 1, depthWrite: false });
@@ -354,12 +362,30 @@ function vendingMachine(g, x, z, rotY, glows) {
   vm.add(shadows(box(1.08, 0.1, 0.78, pbr('#d6dade', { roughness: 0.4 }), 0, 1.88, -0.02))); // top cap
   vm.add(shadows(box(1.0, 0.06, 0.66, pbr('#3a3f45', { roughness: 0.8 }), 0, 0.03, 0))); // plinth
   // recycle boxes: cans / PET
-  for (const [bx, col, lab] of [[0.72, '#2c7be5', 'あきかん'], [1.05, '#2e9e5b', 'ペットボトル']]) {
+  if (bins) for (const [bx, col, lab] of [[0.72, '#2c7be5', 'あきかん'], [1.05, '#2e9e5b', 'ペットボトル']]) {
     const t = canvasTex(128, 128, (c, w) => { c.fillStyle = col; c.fillRect(0, 0, w, w); c.fillStyle = '#111'; c.beginPath(); c.arc(w / 2, 34, 18, 0, 7); c.fill(); c.fillStyle = '#fff'; c.font = `bold ${lab.length > 4 ? 14 : 22}px sans-serif`; c.textAlign = 'center'; c.fillText(lab, w / 2, 96); });
     const side = pbr(col, { roughness: 0.35 });
     vm.add(shadows(box(0.3, 0.72, 0.3, [side, side, side, side, pbr('#ffffff', { map: t, roughness: 0.35 }), side], bx, 0.36, 0.15)));
   }
   g.add(vm);
+}
+
+// A row of colourful machines on the left verge behind her: the neon night's light source. Their glow reaches
+// her as rim/fill (REFS.emitters); one shared point light tints the road, and soft additive sprites fake the
+// coloured haze rising off the ground (shown only by the neon preset).
+function vendingCorner(g) {
+  const styles = [VM_STYLES.sakura, VM_STYLES.aqua, VM_STYLES.night, VM_STYLES.matcha];
+  styles.forEach((st, i) => vendingMachine(g, -4.35, -1.6 - i * 1.12, Math.PI / 2 - 0.12, st, { bins: false }));
+  const spill = new THREE.PointLight('#ff5ad6', 0, 7, 2); spill.position.set(-3.2, 1.2, -3.3); g.add(spill);
+  REFS.nightLights.push({ light: spill, power: 2.5 });
+  const haze = new THREE.Group(); haze.visible = false;
+  const tex = canvasTex(128, 128, (c, w) => { const gr = c.createRadialGradient(w / 2, w / 2, 0, w / 2, w / 2, w / 2); gr.addColorStop(0, 'rgba(255,255,255,0.55)'); gr.addColorStop(1, 'rgba(255,255,255,0)'); c.fillStyle = gr; c.fillRect(0, 0, w, w); });
+  styles.forEach((st, i) => {
+    const m = new THREE.SpriteMaterial({ map: tex, color: st.glow, transparent: true, opacity: 0.35, depthWrite: false, blending: THREE.AdditiveBlending, fog: false });
+    m.userData.outlineParameters = { visible: false };
+    const sp = new THREE.Sprite(m); sp.position.set(-3.6, 0.5, -1.6 - i * 1.12); sp.scale.set(3.2, 1.6, 1); haze.add(sp);
+  });
+  g.add(haze); REFS.neonHaze = haze;
 }
 
 function curveMirror(g, x, z, rotY) {
@@ -388,8 +414,11 @@ function townscape(g) {
   const walls = ['#f5efe2', '#eaf2f4', '#f7e7d6', '#e8eee1', '#f3f0f7'], roofs = ['#3d6f9a', '#2f8f8a', '#b05a43', '#5a6470', '#3f5f8f'];
   let seed = 7; const rnd = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
   const win = canvasTex(64, 64, (c, w, h) => { c.fillStyle = '#9fc7e6'; c.fillRect(0, 0, w, h); c.fillStyle = 'rgba(255,255,255,0.6)'; c.fillRect(6, 6, 18, 52); c.strokeStyle = '#e8edf0'; c.lineWidth = 6; c.strokeRect(0, 0, w, h); c.beginPath(); c.moveTo(w / 2, 0); c.lineTo(w / 2, h); c.stroke(); });
-  const glass = pbr('#ffffff', { map: win, metalness: 0.3, roughness: 0.08, emissive: '#ffcf8a', emissiveIntensity: 0 });
-  REFS.windows.push(glass);
+  // warm at night; the neon preset swaps each to its own colour (userData.neon)
+  const glasses = ['#ffcf8a', '#7ff6ff', '#ff86dc', '#b4ff8a', '#c8a2ff'].map((neon) => {
+    const m = new THREE.MeshStandardMaterial({ color: '#ffffff', map: win, metalness: 0.3, roughness: 0.08, emissive: '#ffcf8a', emissiveIntensity: 0 });
+    m.userData.neon = new THREE.Color(neon); REFS.windows.push(m); return m;
+  });
   for (const side of [-1, 1]) {
     for (let z = -16; z > -150; z -= 9 + rnd() * 6) {
       const w = 6 + rnd() * 4, d = 6 + rnd() * 3, h = 3 + rnd() * 3.5, x = side * (9 + rnd() * 10);
@@ -400,6 +429,7 @@ function townscape(g) {
       const roof = new THREE.Mesh(new THREE.CylinderGeometry(0.01, d * 0.72, 1.8, 4, 1), roofMat);
       roof.rotation.y = Math.PI / 4; roof.scale.set(w / d, 1, 1); roof.position.y = h + 0.9;
       house.add(roof);
+      const glass = glasses[Math.abs(Math.round(z * 3 + side)) % glasses.length]; // not rnd(): keep the seeded town layout
       for (let i = 0; i < 2; i++) { const wdw = box(1.1, 1.1, 0.05, glass, (i - 0.5) * w * 0.45, h * 0.55, d / 2 + 0.03); house.add(wdw); }
       if (rnd() > 0.5) house.add(box(w * 0.5, 0.1, 1, pbr('#c9ced3', { metalness: 0.4, roughness: 0.4 }), 0, h * 0.62, d / 2 + 0.5)); // balcony
       house.position.set(x, 0, z);
@@ -485,7 +515,8 @@ export function createCrossing(renderer) {
   crossingSignal(g, -3.5, TRACK_Z + 2.6, 0, lamps, arms);
   crossingSignal(g, 3.5, TRACK_Z - 2.6, Math.PI, lamps, arms);
   utilityPoles(g); guardrails(g);
-  vendingMachine(g, 4.0, -3.0, -Math.PI / 2 + 0.25, glows);
+  vendingMachine(g, 4.0, -3.0, -Math.PI / 2 + 0.25, VM_STYLES.cool);
+  vendingCorner(g);
   curveMirror(g, 3.6, -7.6, -0.6);
   townscape(g);
   streetLamp(g, -3.9, -15.5, 0);
