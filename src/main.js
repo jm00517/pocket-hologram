@@ -31,7 +31,8 @@ window.setEye=p=>{eye={...eye,...p}}; // debug: fake a viewer position (meters) 
 
 // three.js MMD example lighting, a bit dimmer (3/3 blew out skin on Sour-style models).
 const ambient=new THREE.AmbientLight(0xaaaaaa,2);scene.add(ambient);
-const key=new THREE.DirectionalLight(0xffffff,2.5);key.position.set(-1,1,1);scene.add(key);
+const gi=createGI(renderer);window.gi=gi; // debug: gi.strength.value, gi.key
+const key=gi.key; // the character's own key light: lights only her (see GI.js), driven per weather
 const outline=new OutlineEffect(renderer); // MMD's ink lines; most of the "MMD look"
 window.outline=true;window.scene=scene; // debug
 const post=createPost(renderer,scene,camera,outline);window.post=post; // debug
@@ -39,7 +40,6 @@ const post=createPost(renderer,scene,camera,outline);window.post=post; // debug
 // Background: the railway crossing (default) or the calibration grid room.
 const crossing=createCrossing(renderer);window.crossing=crossing; // debug
 const weather=createWeather({renderer,scene,crossing,post,ambient,key});window.weather=weather;
-const gi=createGI(renderer);window.gi=gi; // debug: gi.strength.value
 // re-shoot the character's bounce light whenever what surrounds her changes (weather, background)
 const captureGI=()=>character&&gi.capture(scene,character.mesh.getWorldPosition(new THREE.Vector3()).setY(stage.position.y+charHeight*.6),character.mesh);
 let foliage=null;const foliageLevel=new URLSearchParams(location.search).get('foliage')??'full'; // full | grass | off
