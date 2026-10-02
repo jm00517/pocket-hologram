@@ -8,7 +8,7 @@ import { Calibration, isMobile } from './calibration/Calibration.js';
 import { bindCalibrationPanel } from './ui/CalibrationPanel.js';
 import { mountChatBar } from './ui/ChatBar.js';
 import { createTestChamber } from './scene/TestChamber.js';
-import { createCrossing, REFS } from './scene/Crossing.js';
+import { createCrossing, REFS, groundY } from './scene/Crossing.js';
 import { createPost } from './scene/Post.js';
 import { createWeather } from './scene/Weather.js';
 import { addFoliage } from './scene/Foliage.js';
@@ -142,7 +142,28 @@ const freeCam={on:false,keys:new Set(),controls:new PointerLockControls(camera,c
 const freeBtn=document.createElement('button');freeBtn.type='button';freeBtn.textContent='🎥 free cam';
 function toggleFree(){freeCam.on=!freeCam.on;freeBtn.textContent=freeCam.on?'🎥 free cam ON (F)':'🎥 free cam';if(!freeCam.on)freeCam.controls.unlock()}
 freeBtn.onclick=toggleFree;
-canvas.addEventListener('click',()=>{if(freeCam.on)freeCam.controls.lock()});
+// Moving her: she stays put at the window's centre and the crossing slides under her (focus = her spot in
+// crossing metres), so her physics never sees a jump. In free cam with the mouse grabbed, a click sends her to
+// the walkable ground under the crosshair; the camera moves with the world so on screen it's her that moves.
+const focus=new THREE.Vector3(),ray=new THREE.Raycaster();
+function moveMiku(p){
+  const U=crossing.group.scale.x;
+  camera.position.addScaledVector(p.clone().sub(focus),-U);
+  focus.copy(p);crossing.group.position.copy(p).multiplyScalar(-U);crossing.setFocus(p);
+  clearTimeout(moveMiku.t);moveMiku.t=setTimeout(captureGI,300); // re-shoot her bounce light where she landed
+}
+window.moveMiku=(x,z)=>moveMiku(new THREE.Vector3(x,groundY(z),z)); // debug
+const crosshair=Object.assign(document.createElement('div'),{style:'position:fixed;left:50%;top:50%;width:8px;height:8px;margin:-4px 0 0 -4px;border:2px solid #fff;border-radius:50%;box-shadow:0 0 3px #000;pointer-events:none;display:none;z-index:50'});
+document.body.append(crosshair);
+freeCam.controls.addEventListener('lock',()=>crosshair.style.display='block');
+freeCam.controls.addEventListener('unlock',()=>crosshair.style.display='none');
+canvas.addEventListener('click',()=>{
+  if(!freeCam.on||!character)return;
+  if(!freeCam.controls.isLocked){freeCam.controls.lock();return}
+  ray.setFromCamera(new THREE.Vector2(0,0),camera);
+  const hit=ray.intersectObjects(REFS.walkable,false)[0];
+  if(hit)moveMiku(crossing.group.worldToLocal(hit.point.clone()));
+});
 addEventListener('keydown',e=>{if(e.target.closest?.('input,textarea,select'))return;if(e.code==='KeyF')toggleFree();freeCam.keys.add(e.code);if(freeCam.on&&/^(Key[WASDC]|Space)$/.test(e.code))e.preventDefault()}); // Space would click the last-focused button
 addEventListener('keyup',e=>freeCam.keys.delete(e.code));
 addEventListener('blur',()=>freeCam.keys.clear());

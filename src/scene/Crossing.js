@@ -51,7 +51,7 @@ const TRACK_Z = -11, CYCLE = 42, TRAIN_SPEED = 17; // m, s, m/s
 const SUN_DIR = new THREE.Vector3(-0.45, 0.62, 0.64).normalize(); // high, front-left: lights the face
 
 // Handles the weather system restyles (filled while building)
-export const REFS = { walls: [], roofs: [], leaves: [], windows: [], nightLights: [], redLights: [], lowTrees: [], emitters: [], vending: [], neonSigns: [], neonHaze: null, roadSpan: null, sea: null, sand: null };
+export const REFS = { walls: [], roofs: [], leaves: [], windows: [], nightLights: [], redLights: [], lowTrees: [], emitters: [], vending: [], neonSigns: [], neonHaze: null, roadSpan: null, sea: null, sand: null, walkable: [] };
 // emitters: things that glow onto the character in real time (GI.js). { obj, color, power() 0..1, range in m,
 // facing?: emits only out of obj's +z (a lit panel) }
 const mats = new Map();
@@ -170,14 +170,14 @@ function ground(g) {
   const grassTex = canvasTex(256, 256, speckle('#86c068', [100, 60], 3500, 2), [120, 120]);
   const grass = new THREE.Mesh(new THREE.PlaneGeometry(400, 250, 1, 250), pbr('#9ad276', { map: grassTex, roughness: 0.95 }));
   grass.rotation.x = -Math.PI / 2; grass.position.set(0, -0.01, -26 + 125); grass.receiveShadow = true; // ends at the sea wall
-  g.add(REFS.ground = drape(grass));
+  g.add(REFS.ground = drape(grass)); REFS.walkable.push(grass);
   const asphalt = canvasTex(512, 512, speckle('#5f6166', [78, 48], 9000, 1.6), [3, 6]);
   const rough = canvasTex(256, 256, speckle('#d0d0d0', [150, 105], 4000, 2), [3, 6], false);
   // runs down from the viewer, over the tracks, and ends at Route 134 (z -17.1)
   const road = new THREE.Mesh(new THREE.PlaneGeometry(6, ROAD_LEN, 1, 88), pbr('#ffffff', { map: asphalt, roughnessMap: rough, roughness: 0.85 }));
   road.rotation.x = -Math.PI / 2; road.position.set(0, 0.002, 0.5 - ROAD_LEN / 2); road.receiveShadow = true;
   REFS.roadSpan = { width: 6, length: ROAD_LEN, z: 0.5 - ROAD_LEN / 2 };
-  REFS.road = drape(road);
+  REFS.road = drape(road); REFS.walkable.push(road);
   g.add(road);
   const paint = pbr('#d6d8d4', { roughness: 0.75 }); // worn road paint, not pure white: full sun pushed it past the bloom threshold
   for (const sx of [-1, 1]) { const l = new THREE.Mesh(new THREE.BoxGeometry(0.15, 0.012, ROAD_LEN, 1, 1, 88), paint); l.position.set(sx * 2.75, 0.008, 0.5 - ROAD_LEN / 2); g.add(shadows(drape(l), false)); }
@@ -491,13 +491,13 @@ function seaside(g) {
   // Route 134: two lanes along x, white edge lines, dashed centre
   const asphalt = canvasTex(512, 512, speckle('#5c5e63', [76, 48], 9000, 1.6), [120, 1.4]);
   const r134 = new THREE.Mesh(new THREE.PlaneGeometry(600, 7), pbr('#ffffff', { map: asphalt, roughness: 0.85 }));
-  r134.rotation.x = -Math.PI / 2; r134.position.set(0, 0.002, -20.6); r134.receiveShadow = true; g.add(r134);
+  r134.rotation.x = -Math.PI / 2; r134.position.set(0, 0.002, -20.6); r134.receiveShadow = true; g.add(r134); REFS.walkable.push(r134);
   const paint = pbr('#d6d8d4', { roughness: 0.75 });
   for (const z of [-17.4, -23.8]) g.add(shadows(box(600, 0.012, 0.15, paint, 0, 0.008, z), false));
   for (let x = -300; x < 300; x += 8) g.add(box(5, 0.012, 0.15, paint, x, 0.008, -20.6));
   // sandy-orange seaside pavement, kerb, sea wall
   const paveTex = canvasTex(256, 256, speckle('#cf9a63', [150, 60], 5000, 2), [150, 1]);
-  g.add(shadows(box(600, 0.14, 2.4, pbr('#ffffff', { map: paveTex, roughness: 0.9 }), 0, 0.07, -25.3), false));
+  const pave = shadows(box(600, 0.14, 2.4, pbr('#ffffff', { map: paveTex, roughness: 0.9 }), 0, 0.07, -25.3), false); g.add(pave); REFS.walkable.push(pave);
   g.add(shadows(box(600, 0.16, 0.2, pbr('#c9c6bd', { roughness: 0.8 }), 0, 0.08, -24.1)));
   const concrete = pbr('#b9b5ab', { roughness: 0.85 });
   g.add(shadows(box(600, 0.95, 0.35, concrete, 0, 0.47, WALL_Z)));
@@ -624,6 +624,11 @@ export function createCrossing(renderer) {
 
   return {
     group: g, sun, flareHolder, glows, lamps,
+    // where she stands, in crossing metres: the sun's shadow box follows her (it only covers ±22 m)
+    setFocus(p) {
+      const d = new THREE.Vector3(p.x, p.y, p.z - 8).sub(target.position); // both live in the group's metres
+      target.position.set(p.x, p.y, p.z - 8); sun.position.add(d);
+    },
     // units per meter of the character world, so lights/shadows/fog can be sized in model units
     fit(scene, U) {
       g.scale.setScalar(U); this.scene = scene; REFS.sea?.setScale(U);
