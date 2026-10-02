@@ -1,7 +1,7 @@
 """Make a real-time version of a Poly Haven tree: decimate trunk/branches, keep a random subset of
 leaf islands (scaled up to keep the canopy full), export a compact .glb next to the source.
 
-    blender --background --factory-startup --python scripts/lighten_tree.py -- <in.gltf> <out.glb> [keep=0.22]
+    blender --background --factory-startup --python scripts/lighten_tree.py -- <in.gltf> <out.glb> [keep=0.22] [wood=0.1]
 """
 import random
 import sys
@@ -10,7 +10,9 @@ import bmesh
 import bpy
 
 src, dst = sys.argv[sys.argv.index('--') + 1:][:2]
-keep = float(sys.argv[sys.argv.index('--') + 3]) if len(sys.argv) > sys.argv.index('--') + 3 else 0.22
+args = sys.argv[sys.argv.index('--') + 1:]
+keep = float(args[2]) if len(args) > 2 else 0.22
+wood = float(args[3]) if len(args) > 3 else 0.1
 random.seed(7)
 bpy.ops.wm.read_factory_settings(use_empty=True)
 bpy.ops.import_scene.gltf(filepath=src)
@@ -50,7 +52,7 @@ for ob in [o for o in bpy.context.scene.objects if o.type == 'MESH']:
         bmesh.ops.delete(bm, geom=list(set(drop)), context='FACES')
         bm.to_mesh(ob.data); bm.free()
     else:
-        mod = ob.modifiers.new('dec', 'DECIMATE'); mod.ratio = 0.1
+        mod = ob.modifiers.new('dec', 'DECIMATE'); mod.ratio = wood
         bpy.context.view_layer.objects.active = ob
         bpy.ops.object.modifier_apply(modifier=mod.name)
     print(f'{ob.name}: {before} -> {len(ob.data.polygons)} faces')

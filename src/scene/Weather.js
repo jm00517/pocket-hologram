@@ -109,7 +109,7 @@ function wetRoad() {
     const t = new THREE.CanvasTexture(c); t.wrapS = t.wrapT = THREE.RepeatWrapping; return t;
   })();
   const r = new Reflector(new THREE.PlaneGeometry(6, 180), {
-    textureWidth: Math.min(2048, innerWidth), textureHeight: Math.min(2048, innerHeight), clipBias: 0.002,
+    textureWidth: Math.min(1024, innerWidth / 2), textureHeight: Math.min(1024, innerHeight / 2), clipBias: 0.002, // half res: only the puddles show it sharply
     shader: {
       uniforms: {
         color: { value: new THREE.Color(1, 1, 1) }, tDiffuse: { value: null }, textureMatrix: { value: null },

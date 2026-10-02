@@ -37,7 +37,7 @@ MMD 에셋은 이 레포에 포함하지 않고 three.js r170 원본 위치에�
   눈은 내리는 눈과 눈 덮인 땅·지붕, 밤은 가로등·자판기·경보등 불빛. 프리셋마다 색보정.
 - 실사 에셋: `python scripts/get-polyhaven.py` (Poly Haven, CC0, 약 37MB → `assets/polyhaven/`). 없으면 애니 맑음만.
 - 식생: 바람에 흔들리는 풀잎 4.2만 장(인스턴싱), Poly Haven 식물 모델(고사리·잡초·괭이밥·민들레·덤불),
-  가까운 나무 2그루(jacaranda, `scripts/lighten_tree.py`로 386만→43만 면, Draco 9.8MB), 먼 숲은 같은 나무의 임포스터.
+  가까운 나무 2그루(jacaranda, `scripts/lighten_tree.py ... 0.05 0.04`로 386만→18만 면, Draco 8.1MB), 먼 숲은 같은 나무의 임포스터.
   `?foliage=grass`(풀만) / `?foliage=off`로 끌 수 있다.
 - 상단 선택으로 踏切/grid 전환, 또는 `?bg=grid`.
 
