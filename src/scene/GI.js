@@ -2,8 +2,9 @@
 //  * key: her own directional light (fixed world direction, colour/intensity from the weather), run through the
 //    toon RE_Direct so the shade line stays crisp. It never lights the background.
 //  * bounce: three feeds scene.environment only to MeshStandardMaterial, so capture() shoots a small cube map
-//    from where she stands (hidden), projects it to SH, and adds only its directional part (L1/L2) to her
-//    indirect light. Colour from the sky, lit road, vending machine or a neon sign tints the side facing it.
+//    from where she stands (hidden) and projects it to SH. The shader takes only its hue per normal and tints
+//    her ambient with it: a sunset, the vending machine or a neon sign colours the side facing it, while the
+//    face's brightness stays flat (a luminance gradient on a toon face reads as muddy smudges).
 import * as THREE from 'three';
 import { LightProbeGenerator } from 'three/addons/lights/LightProbeGenerator.js';
 
@@ -23,7 +24,11 @@ export function createGI(renderer) {
         s.fragmentShader = s.fragmentShader
           .replace('#include <common>', '#include <common>\nuniform vec3 uGI[ 9 ];\nuniform float uGIStrength;\nuniform vec3 uKeyColor;\nuniform vec3 uKeyDir;')
           .replace('#include <lights_fragment_maps>', `#include <lights_fragment_maps>
-            irradiance += uGIStrength * getLightProbeIrradiance( uGI, geometryNormal );
+            // tint only: the probe's brightness gradient on a toon face reads as muddy smudges, so keep its hue
+            vec3 giIrr = max( getLightProbeIrradiance( uGI, geometryNormal ), vec3( 0.0 ) );
+            float giLum = dot( giIrr, vec3( 0.2126, 0.7152, 0.0722 ) );
+            vec3 giTint = giLum > 1e-4 ? clamp( giIrr / giLum, 0.0, 2.0 ) : vec3( 1.0 );
+            irradiance *= mix( vec3( 1.0 ), giTint, uGIStrength );
             IncidentLight keyLight;
             keyLight.direction = normalize( ( viewMatrix * vec4( uKeyDir, 0.0 ) ).xyz );
             keyLight.color = uKeyColor;
@@ -37,7 +42,6 @@ export function createGI(renderer) {
       hide.visible = false; cam.position.copy(at); cam.update(renderer, scene); hide.visible = true;
       const probe = await LightProbeGenerator.fromCubeRenderTarget(renderer, cam.renderTarget);
       probe.sh.coefficients.forEach((c, i) => sh.value[i].copy(c));
-      sh.value[0].set(0, 0, 0); // the average (L0) is the per-weather ambient's job; keep only where the light comes from
     },
   };
 }
