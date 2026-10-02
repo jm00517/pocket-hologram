@@ -5,6 +5,7 @@
 // barriers come down.
 import * as THREE from 'three';
 import { Lensflare, LensflareElement } from 'three/addons/objects/Lensflare.js';
+import { createSea } from './Sea.js';
 
 const ROAD_LEN = 17.6;
 // The hill: flat where she stands, then the road drops HILL_DROP m to the crossing (a cosine ramp between
@@ -50,7 +51,7 @@ const TRACK_Z = -11, CYCLE = 42, TRAIN_SPEED = 17; // m, s, m/s
 const SUN_DIR = new THREE.Vector3(-0.45, 0.62, 0.64).normalize(); // high, front-left: lights the face
 
 // Handles the weather system restyles (filled while building)
-export const REFS = { walls: [], roofs: [], leaves: [], windows: [], nightLights: [], redLights: [], lowTrees: [], emitters: [], vending: [], neonSigns: [], neonHaze: null, roadSpan: null, sea: null, foam: null, sand: null };
+export const REFS = { walls: [], roofs: [], leaves: [], windows: [], nightLights: [], redLights: [], lowTrees: [], emitters: [], vending: [], neonSigns: [], neonHaze: null, roadSpan: null, sea: null, sand: null };
 // emitters: things that glow onto the character in real time (GI.js). { obj, color, power() 0..1, range in m,
 // facing?: emits only out of obj's +z (a lit panel) }
 const mats = new Map();
@@ -484,27 +485,8 @@ function curveMirror(g, x, z, rotY) {
 
 // --- the coast past the crossing (Kamakura-Kokomae): Route 134, a sandy-orange pavement, the sea wall, a
 // concrete revetment down to the beach, and the open sea to the horizon with Enoshima far off to the right.
-// The sea is a glossy standard material with a scrolling wave normal map, so it reflects each weather's sky
-// through the existing IBL instead of a second full-scene mirror render.
+// The sea itself lives in Sea.js.
 const SEA_Y = -4, WALL_Z = -26.6;
-function waveNormals() { // tileable: integer wave numbers over the 256 px tile
-  const N = 256, h = new Float32Array(N * N);
-  const waves = [[3, 1, 1], [-2, 5, 0.6], [7, -3, 0.35], [-9, -8, 0.2], [13, 4, 0.12], [-5, 17, 0.08]];
-  for (let y = 0; y < N; y++) for (let x = 0; x < N; x++) {
-    let v = 0;
-    for (const [kx, ky, a] of waves) v += a * Math.sin(((kx * x + ky * y) / N) * Math.PI * 2 + kx * 1.7);
-    h[y * N + x] = v;
-  }
-  return canvasTex(N, N, (c) => {
-    const img = c.createImageData(N, N);
-    for (let y = 0; y < N; y++) for (let x = 0; x < N; x++) {
-      const dx = h[y * N + ((x + 1) % N)] - h[y * N + ((x + N - 1) % N)], dy = h[((y + 1) % N) * N + x] - h[((y + N - 1) % N) * N + x];
-      const n = new THREE.Vector3(-dx * 6, -dy * 6, 1).normalize(), i = (y * N + x) * 4;
-      img.data[i] = (n.x * 0.5 + 0.5) * 255; img.data[i + 1] = (n.y * 0.5 + 0.5) * 255; img.data[i + 2] = (n.z * 0.5 + 0.5) * 255; img.data[i + 3] = 255;
-    }
-    c.putImageData(img, 0, 0);
-  }, [900, 450], false);
-}
 function seaside(g) {
   // Route 134: two lanes along x, white edge lines, dashed centre
   const asphalt = canvasTex(512, 512, speckle('#5c5e63', [76, 48], 9000, 1.6), [120, 1.4]);
@@ -526,18 +508,9 @@ function seaside(g) {
   const sand = new THREE.Mesh(new THREE.PlaneGeometry(600, 14), pbr('#ffffff', { map: sandTex, roughness: 1 }));
   sand.rotation.x = -Math.PI / 2 - 0.035; sand.position.set(0, SEA_Y + 0.1, WALL_Z - 4.4 - 7); sand.receiveShadow = true; g.add(sand);
   REFS.sand = sand.material;
-  // the sea
-  const normalMap = waveNormals();
-  const sea = new THREE.Mesh(new THREE.PlaneGeometry(9000, 4500), new THREE.MeshStandardMaterial({ color: '#24525f', roughness: 0.08, metalness: 0.1, normalMap, normalScale: new THREE.Vector2(0.55, 0.55), fog: false }));
-  sea.rotation.x = -Math.PI / 2; sea.position.set(0, SEA_Y + 0.15, WALL_Z - 16 - 2250); g.add(sea);
-  REFS.sea = sea.material;
-  // surf: a soft white band breaking on the sand, drifting
-  const foamTex = canvasTex(512, 64, (c, w, h) => {
-    for (let i = 0; i < 900; i++) { const x = Math.random() * w, y = h * 0.5 + (Math.random() - 0.5) * h * 0.7 * Math.random(); c.fillStyle = `rgba(255,255,255,${0.15 + Math.random() * 0.4})`; c.beginPath(); c.ellipse(x, y, 4 + Math.random() * 14, 1 + Math.random() * 3, 0, 0, 7); c.fill(); }
-  }, [40, 1]);
-  const foam = new THREE.Mesh(new THREE.PlaneGeometry(600, 5), new THREE.MeshStandardMaterial({ map: foamTex, transparent: true, depthWrite: false, roughness: 0.6 }));
-  foam.rotation.x = -Math.PI / 2; foam.position.set(0, SEA_Y + 0.2, WALL_Z - 16.5); g.add(foam);
-  REFS.foam = foamTex;
+  // the sea (Sea.js); its group sits on the waterline where the sand dips under
+  const sea = createSea(); sea.group.position.set(0, SEA_Y + 0.15, WALL_Z - 15.4); g.add(sea.group);
+  REFS.sea = sea;
   // Enoshima: a low wooded hump with the Sea Candle, hazed by the fog
   const isle = new THREE.Group(); isle.position.set(1100, SEA_Y, -2600);
   const hump = new THREE.Mesh(new THREE.SphereGeometry(180, 24, 10, 0, Math.PI * 2, 0, Math.PI / 2), pbr('#3e5a3c', { roughness: 1 }));
@@ -653,7 +626,7 @@ export function createCrossing(renderer) {
     group: g, sun, flareHolder, glows, lamps,
     // units per meter of the character world, so lights/shadows/fog can be sized in model units
     fit(scene, U) {
-      g.scale.setScalar(U);
+      g.scale.setScalar(U); this.scene = scene; REFS.sea?.setScale(U);
       sun.color.set('#fff1d6'); sun.intensity = 3.6;
       sun.position.copy(SUN_DIR).multiplyScalar(60).add(target.position);
       const cam = sun.shadow.camera;
@@ -680,7 +653,7 @@ export function createCrossing(renderer) {
       const active = head > -5 * TRAIN_SPEED && tail < 8;
       bar += ((active ? 0 : 1.45) - bar) * (1 - Math.exp(-dt * (active ? 2.2 : 1.4)));
       for (const a of arms) a.rotation.z = bar;
-      if (REFS.sea) { REFS.sea.normalMap.offset.set(t * 0.004, t * 0.0025); REFS.foam.offset.x = Math.sin(t * 0.3) * 0.02; }
+      REFS.sea?.tick(t, this.scene?.fog);
       const beat = Math.floor(t * 2.2);
       for (let i = 0; i < lamps.length; i++) lamps[i].emissiveIntensity = active && (beat + i) % 2 ? 6 : 0;
       for (let i = 0; i < REFS.redLights.length; i++) REFS.redLights[i].intensity = active && (beat + i) % 2 ? this.redPower ?? 0 : 0;
