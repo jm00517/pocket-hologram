@@ -46,7 +46,7 @@ export const WEATHERS = {
 
 // --- HDRI sky: load, find the sun in the photo ---------------------------------------------------------
 const skies = {};
-async function loadSky(renderer, name, sat = 1, tame = null) {
+export async function loadSky(renderer, name, sat = 1, tame = null) {
   if (skies[name]) return skies[name];
   const tex = await new RGBELoader().loadAsync(`${PH}hdri/${name}.hdr`);
   tex.mapping = THREE.EquirectangularReflectionMapping;
