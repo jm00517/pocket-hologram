@@ -10,7 +10,8 @@ const TRACK_Z = -11, CYCLE = 42, TRAIN_SPEED = 17; // m, s, m/s
 const SUN_DIR = new THREE.Vector3(-0.45, 0.62, 0.64).normalize(); // high, front-left: lights the face
 
 // Handles the weather system restyles (filled while building)
-export const REFS = { walls: [], roofs: [], leaves: [], windows: [], nightLights: [], redLights: [], lowTrees: [] };
+export const REFS = { walls: [], roofs: [], leaves: [], windows: [], nightLights: [], redLights: [], lowTrees: [], emitters: [] };
+// emitters: things that glow onto the character in real time (GI.js). { obj, color, power() 0..1, range in m }
 const mats = new Map();
 function pbr(color, o = {}) {
   const key = color + JSON.stringify(o, (k, v) => (v?.isTexture ? v.uuid : v));
@@ -217,6 +218,7 @@ function crossingSignal(g, x, z, face, lamps, arms) {
     const lamp = noOutline(new THREE.Mesh(new THREE.SphereGeometry(0.14, 24, 12, 0, Math.PI * 2, 0, Math.PI / 2), lens));
     lamp.rotation.x = Math.PI / 2; lamp.scale.y = 0.35; lamp.position.set(dx, 2.38, 0.1);
     s.add(lamp); lamps.push(lens);
+    REFS.emitters.push({ obj: lamp, color: new THREE.Color('#ff2a1a'), power: () => lens.emissiveIntensity / 6, range: 22 });
     const hood = new THREE.Mesh(new THREE.CylinderGeometry(0.18, 0.18, 0.17, 20, 1, true, -Math.PI / 2, Math.PI), black);
     hood.rotation.x = Math.PI / 2; hood.position.set(dx, 2.39, 0.18); hood.material.side = THREE.DoubleSide; s.add(hood);
   }
@@ -340,6 +342,7 @@ function vendingMachine(g, x, z, rotY, glows) {
   const caseMat = new THREE.MeshStandardMaterial({ map: caseMap, emissive: '#ffffff', emissiveMap: caseGlow, emissiveIntensity: 0.55, roughness: 0.7 });
   const sc = new THREE.Mesh(new THREE.PlaneGeometry(0.86, sh), caseMat);
   sc.position.set(0, cy, 0.385); vm.add(sc); glows.push(caseMat);
+  REFS.emitters.push({ obj: sc, color: new THREE.Color('#d8ecff'), power: () => caseMat.emissiveIntensity, range: 5 });
   const frame = pbr('#c3cad1', { roughness: 0.3, metalness: 0.6 });
   for (const [w, h, fx, fy] of [[0.94, 0.04, 0, cy + sh / 2 + 0.02], [0.94, 0.04, 0, cy - sh / 2 - 0.02], [0.04, sh, -0.45, cy], [0.04, sh, 0.45, cy]]) vm.add(box(w, h, 0.05, frame, fx, fy, 0.405));
   const glass = new THREE.MeshStandardMaterial({ color: '#ffffff', transparent: true, opacity: 0.08, roughness: 0.02, metalness: 1, depthWrite: false });
@@ -431,7 +434,8 @@ function streetLamp(g, x, z, rotY) {
   const arm = shadows(cyl(0.04, 1.4, metal, 0.6, 5.55, 0, 8)); arm.rotation.z = Math.PI / 2 - 0.25; l.add(arm);
   l.add(shadows(box(0.55, 0.12, 0.25, pbr('#c9ced3', { metalness: 0.5, roughness: 0.4 }), 1.25, 5.62, 0)));
   const bulbMat = new THREE.MeshStandardMaterial({ color: '#ffffff', emissive: '#ffd9a0', emissiveIntensity: 0 });
-  l.add(box(0.45, 0.03, 0.18, bulbMat, 1.25, 5.55, 0));
+  const bulb = box(0.45, 0.03, 0.18, bulbMat, 1.25, 5.55, 0); l.add(bulb);
+  REFS.emitters.push({ obj: bulb, color: new THREE.Color('#ffcf8a'), power: () => bulbMat.emissiveIntensity / 4, range: 12 });
   const light = new THREE.SpotLight('#ffcf8a', 0, 26, 1.05, 0.55, 1.6);
   light.position.set(1.25, 5.5, 0); light.target.position.set(1.4, 0, 0);
   l.add(light, light.target);

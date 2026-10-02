@@ -7,7 +7,7 @@ import { Calibration, isMobile } from './calibration/Calibration.js';
 import { bindCalibrationPanel } from './ui/CalibrationPanel.js';
 import { mountChatBar } from './ui/ChatBar.js';
 import { createTestChamber } from './scene/TestChamber.js';
-import { createCrossing } from './scene/Crossing.js';
+import { createCrossing, REFS } from './scene/Crossing.js';
 import { createPost } from './scene/Post.js';
 import { createWeather } from './scene/Weather.js';
 import { addFoliage } from './scene/Foliage.js';
@@ -222,6 +222,6 @@ function frame(){
   const vp=viewport();spatial.update({x:(ve.x-vp.ox)*K,y:(ve.y-vp.oy)*K,z:ve.z*K});
   if(character){character.lookTarget=camera.position;character.update(dt);const c=character.bones['センター'].getWorldPosition(blob.position);stage.worldToLocal(c);c.y=.01}
   debugPanel.textContent=`filtered eye (m)\nx ${eye.x.toFixed(3)}\ny ${eye.y.toFixed(3)}\nz ${eye.z.toFixed(3)}\n\nraw z ${rawEye.z.toFixed(3)}\nHFOV ${calibration.data.cameraHFovDeg.toFixed(1)}°\nK ${K.toFixed(1)}`;
-  crossing.tick(clock.elapsedTime,dt);weather.tick(clock.elapsedTime,dt);foliage?.tick(clock.elapsedTime);
+  crossing.tick(clock.elapsedTime,dt);weather.tick(clock.elapsedTime,dt);foliage?.tick(clock.elapsedTime);gi.tick(REFS.emitters);
   post.render();requestAnimationFrame(frame)
 }frame();
