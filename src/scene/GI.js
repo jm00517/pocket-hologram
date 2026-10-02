@@ -6,7 +6,7 @@ import * as THREE from 'three';
 import { LightProbeGenerator } from 'three/addons/lights/LightProbeGenerator.js';
 
 export function createGI(renderer) {
-  const sh = { value: Array.from({ length: 9 }, () => new THREE.Vector3()) }, strength = { value: 0.35 }; // on top of the per-weather ambient; 0.8 washed the hair out
+  const sh = { value: Array.from({ length: 9 }, () => new THREE.Vector3()) }, strength = { value: 0.6 };
   const cam = new THREE.CubeCamera(0.01, 30000, new THREE.WebGLCubeRenderTarget(32, { type: THREE.HalfFloatType }));
   return {
     strength,
@@ -24,6 +24,7 @@ export function createGI(renderer) {
       hide.visible = false; cam.position.copy(at); cam.update(renderer, scene); hide.visible = true;
       const probe = await LightProbeGenerator.fromCubeRenderTarget(renderer, cam.renderTarget);
       probe.sh.coefficients.forEach((c, i) => sh.value[i].copy(c));
+      sh.value[0].set(0, 0, 0); // the average (L0) is the per-weather ambient's job; keep only where the light comes from
     },
   };
 }
