@@ -1,0 +1,5 @@
+crossing_signal/crossing_signal.glb
+  "Railroad level crossing" by aa050928777003 on Sketchfab
+  https://sketchfab.com/3d-models/efaaaf600f624383abc710273b9cd5e9
+  License: CC BY 4.0 (https://creativecommons.org/licenses/by/4.0/)
+  Changes: decimated to 20%, re-centred on the pole foot, textures downsized to 1024, Draco-compressed.

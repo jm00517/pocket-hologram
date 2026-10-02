@@ -3,5 +3,7 @@ dist/
 .vite/
 *.log
 .DS_Store
-assets/
+# third-party assets are fetched by scripts or kept local; assets/models holds redistributable (CC) props
+assets/*
+!assets/models/
 .tools/

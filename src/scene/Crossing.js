@@ -6,6 +6,8 @@
 import * as THREE from 'three';
 import { Lensflare, LensflareElement } from 'three/addons/objects/Lensflare.js';
 import { createSea } from './Sea.js';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { DRACOLoader } from 'three/addons/loaders/DRACOLoader.js';
 
 const ROAD_LEN = 17.6;
 // The hill: flat where she stands, then the road drops HILL_DROP m to the crossing (a cosine ramp between
@@ -255,31 +257,24 @@ function railway(g) {
 }
 
 // --- crossing signal + barrier ----------------------------------------------------------------------
+// Crossing signal: photoscanned model ("Railroad level crossing" by aa050928777003 on Sketchfab, CC BY 4.0;
+// decimated + re-centred on the pole foot by hand in Blender, see CREDITS). The blinking lenses are our own
+// discs laid over the model's lamps so they can light up and feed the character's emitters.
+const gltf = new GLTFLoader().setDRACOLoader(new DRACOLoader().setDecoderPath('https://www.gstatic.com/draco/versioned/decoders/1.5.7/'));
+const signalModel = gltf.loadAsync('assets/models/crossing_signal/crossing_signal.glb').then((m) => m.scene);
+const LENSES = [[-0.33, 2.65], [0.44, 2.62]]; // model lamp centres (x, y), front face at z 0.25
 function crossingSignal(g, x, z, face, lamps, arms) {
   const s = new THREE.Group();
   s.position.set(x, 0, z); s.rotation.y = face;
-  const black = pbr('#1f2125', { roughness: 0.5 }), paintY = pbr('#ffffff', { map: stripeTex(8, false), roughness: 0.45 });
-  s.add(cyl(0.075, 3.5, paintY, 0, 1.75, 0));
-  s.add(cyl(0.05, 0.25, black, 0, 3.55, 0, 8, 0.08)); // cap
-  const buck = canvasTex(256, 40, (c, w, h) => { c.fillStyle = '#1f2125'; c.fillRect(0, 0, w, h); c.fillStyle = '#ffcf1a'; c.fillRect(5, 5, w - 10, h - 10); });
-  for (const r of [Math.PI / 4, -Math.PI / 4]) {
-    const b = new THREE.Mesh(new THREE.BoxGeometry(1.25, 0.2, 0.03), pbr('#ffffff', { map: buck, roughness: 0.4 }));
-    b.position.set(0, 3.1, 0.09); b.rotation.z = r; s.add(b);
-  }
-  s.add(box(0.98, 0.4, 0.05, black, 0, 2.38, 0.08));
-  for (const dx of [-0.31, 0.31]) {
-    const lens = new THREE.MeshStandardMaterial({ color: '#3a0606', emissive: '#ff1e1e', emissiveIntensity: 0, roughness: 0.15 });
-    const lamp = noOutline(new THREE.Mesh(new THREE.SphereGeometry(0.14, 24, 12, 0, Math.PI * 2, 0, Math.PI / 2), lens));
-    lamp.rotation.x = Math.PI / 2; lamp.scale.y = 0.35; lamp.position.set(dx, 2.38, 0.1);
+  const black = pbr('#1f2125', { roughness: 0.5 });
+  signalModel.then((m) => { const c = m.clone(); c.traverse((o) => { if (o.isMesh) noOutline(o); }); s.add(shadows(c)); });
+  for (const [lx, ly] of LENSES) {
+    const lens = new THREE.MeshStandardMaterial({ color: '#2a0505', emissive: '#ff1e1e', emissiveIntensity: 0, roughness: 0.2, transparent: true, opacity: 0.85 });
+    const lamp = noOutline(new THREE.Mesh(new THREE.CircleGeometry(0.12, 28), lens));
+    lamp.position.set(lx, ly, 0.27);
     s.add(lamp); lamps.push(lens);
     REFS.emitters.push({ obj: lamp, color: new THREE.Color('#ff2a1a'), power: () => lens.emissiveIntensity / 6, range: 22 });
-    const hood = new THREE.Mesh(new THREE.CylinderGeometry(0.18, 0.18, 0.17, 20, 1, true, -Math.PI / 2, Math.PI), black);
-    hood.rotation.x = Math.PI / 2; hood.position.set(dx, 2.39, 0.18); hood.material.side = THREE.DoubleSide; s.add(hood);
   }
-  // ⇔ direction indicator + speaker
-  const arrow = canvasTex(128, 48, (c, w, h) => { c.fillStyle = '#111'; c.fillRect(0, 0, w, h); c.fillStyle = '#9ef0ff'; c.font = 'bold 40px sans-serif'; c.textAlign = 'center'; c.fillText('⇔', w / 2, 38); });
-  s.add(noOutline(box(0.5, 0.2, 0.05, new THREE.MeshStandardMaterial({ map: arrow, emissive: '#ffffff', emissiveMap: arrow, emissiveIntensity: 0.6 }), 0, 1.98, 0.08)));
-  s.add(cyl(0.12, 0.12, black, 0, 3.75, 0.05, 12, 0.06));
   // barrier housing + arm on a pivot (rotation.z animates 0 = down .. 1.45 = up)
   s.add(shadows(box(0.36, 1.0, 0.32, pbr('#eceee8', { roughness: 0.5 }), 0.42, 0.5, 0.25)));
   const pivot = new THREE.Group(); pivot.position.set(0.42, 0.92, 0.45);
