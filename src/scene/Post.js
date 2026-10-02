@@ -42,6 +42,9 @@ export function createPost(renderer, scene, camera, outline) {
   const ao = new GTAOPass(scene, camera, 1, 1);
   ao.blendIntensity = 0.85;
   ao.updateGtaoMaterial({ radius: 0.6, distanceExponent: 1.4, thickness: 1, scale: 1 });
+  // GTAO's normal/depth pass draws sprites as solid quads (no alpha test), shading dark boxes behind the impostor trees
+  const hideFromAO = ao.overrideVisibility.bind(ao);
+  ao.overrideVisibility = () => { hideFromAO(); scene.traverse((o) => { if (o.isSprite) o.visible = false; }); };
   const bloom = new UnrealBloomPass(new THREE.Vector2(1, 1), 0.35, 0.5, 1.15); // strength, radius, threshold (HDR: only lamps/screens/glints)
   const smaa = new SMAAPass(1, 1);
   composer.addPass(render);
