@@ -12,6 +12,7 @@ import { createCrossing, REFS, groundY } from './scene/Crossing.js';
 import { createPost } from './scene/Post.js';
 import { createWeather } from './scene/Weather.js';
 import { createClassroom } from './scene/Classroom.js';
+import { createPool } from './scene/Pool.js';
 import { addFoliage } from './scene/Foliage.js';
 import { createGI } from './scene/GI.js';
 import { Character, BUILTIN_MOTIONS, IDLE_POSE, DEFAULT_MODEL } from './character/Character.js';
@@ -43,24 +44,24 @@ const post=createPost(renderer,scene,camera,outline);window.post=post; // debug
 // Background: the railway crossing (default) or the calibration grid room.
 const crossing=createCrossing(renderer);window.crossing=crossing; // debug
 const weather=createWeather({renderer,scene,crossing,post,ambient,key});window.weather=weather;
-const classroom=createClassroom(renderer);window.classroom=classroom; // debug
+// self-lit maps: each brings its own sky, sun and character look instead of the weather presets
+const maps={classroom:createClassroom(renderer),pool:createPool(renderer)};window.maps=maps; // debug
 // re-shoot the character's bounce light whenever what surrounds her changes (weather, background)
 const captureGI=()=>character&&gi.capture(scene,character.mesh.getWorldPosition(new THREE.Vector3()).setY(stage.position.y+charHeight*.6),character.mesh);
 let foliage=null;const foliageLevel=new URLSearchParams(location.search).get('foliage')??'full'; // full | grass | off
 if(foliageLevel!=='off')addFoliage(crossing.group,renderer,{models:foliageLevel==='full'}).then(f=>foliage=f).catch(e=>console.error('foliage',e));
 let weatherName=new URLSearchParams(location.search).get('weather')||'sunset';
 let bg=new URLSearchParams(location.search).get('bg')||'crossing',weatherSel=null;
-// Maps: the railway crossing (weather presets apply), the after-school classroom (its own sunset look), or the grid.
 function applyBackground(){
-  const on=bg==='crossing'&&!!charHeight,room=bg==='classroom'&&!!charHeight;
-  crossing.group.visible=on;classroom.group.visible=room;
+  const on=bg==='crossing'&&!!charHeight,map=charHeight?maps[bg]:null,room=!!map;
+  crossing.group.visible=on;for(const m of Object.values(maps))m.group.visible=m===map;
   if(chamber)chamber.visible=!on&&!room;
   blob.material.opacity=on||room?0:1; // real sun shadows replace the blob
   weatherSel?.classList.toggle('hidden',!on);bellBtn?.classList.toggle('hidden',!on);
-  if(room){const U=charHeight/1.6,L=classroom.look;crossing.unfit(scene);post.setScale(U);
+  if(room){const U=charHeight/1.6,L=map.look;crossing.unfit(scene);post.setScale(U);
     renderer.toneMappingExposure=L.exposure;post.grade(L.grade);post.bloom.strength=L.bloom;post.bloom.threshold=L.bloomThreshold;
     ambient.color.set(L.amb[0]);ambient.intensity=L.amb[1];key.color.set(L.key[0]);key.intensity=L.key[1];key.position.copy(L.keyDir);gi.strength.value=L.gi;
-    classroom.fit(scene,U).then(()=>{captureGI();syncGfx?.()});return}
+    map.fit(scene,U).then(()=>{captureGI();syncGfx?.()});return}
   if(!on)scene.background=new THREE.Color(0x03050a);
   if(on){const U=charHeight/1.6;crossing.fit(scene,U);post.setScale(U);weather.set(weatherName,U).then(n=>{if(weatherSel)weatherSel.value=n;captureGI()})}
   else{crossing.unfit(scene);post.grade(null);renderer.toneMappingExposure=1;ambient.color.set('#aaaaaa');ambient.intensity=2;key.color.set('#ffffff');key.intensity=2.5;key.position.set(-1,1,1);captureGI()}
@@ -98,7 +99,7 @@ function layout(){
   if(chamber)scene.remove(chamber);
   const v=viewport(),depth=roomDepth(v)*K;
   chamber=createTestChamber(scene,{width:d.screenWidthM,height:d.screenHeightM,depth,step:Math.max(.01,v.w/12)*K});
-  chamber.visible=!((bg==='crossing'||bg==='classroom')&&charHeight);
+  chamber.visible=!((bg==='crossing'||maps[bg])&&charHeight);
   stage.position.set(0,-d.screenHeightM/2,-standZ(v)*K);
   if(current)ModelLoader.place(current,d.screenWidthM,d.screenHeightM,depth);
   character?.resetPhysics();
@@ -114,7 +115,7 @@ async function loadCharacter(url,manager){
   charHeight=h;
   stage.add(mesh);blob.scale.set(h*.45,h*.3,1);blob.visible=true;layout();
   for(const m of [].concat(mesh.material))gi.patch(m);
-  mesh.castShadow=true;if(!crossing.group.parent)stage.add(crossing.group,classroom.group);applyBackground();
+  mesh.castShadow=true;if(!crossing.group.parent)stage.add(crossing.group,...Object.values(maps).map(m=>m.group));applyBackground();
   motionSel.innerHTML=['idle',...Object.keys(BUILTIN_MOTIONS).filter(n=>n!==IDLE_POSE)].map(n=>`<option>${n}</option>`).join('');
   // Library: every clip the director loaded (idle stands, fidgets, gestures), for previewing one by one.
   c.directorReady.then(()=>{
@@ -127,7 +128,7 @@ async function loadCharacter(url,manager){
 }
 const resetBtn=document.createElement('button');resetBtn.textContent='포즈 리셋';resetBtn.type='button';
 resetBtn.onclick=()=>{if(!character)return;character.reset();character.idle=true;character.director.enabled=true;motionSel.value='idle';status.textContent='reset'};
-const bgSel=document.createElement('select');bgSel.innerHTML='<option value="crossing">배경: 踏切</option><option value="classroom">배경: 放課後の教室</option><option value="grid">배경: 그리드</option>';bgSel.value=bg;
+const bgSel=document.createElement('select');bgSel.innerHTML='<option value="crossing">배경: 踏切</option><option value="classroom">배경: 放課後の教室</option><option value="pool">배경: 学校のプール</option><option value="grid">배경: 그리드</option>';bgSel.value=bg;
 bgSel.onchange=()=>{bg=bgSel.value;applyBackground()};
 const bellBtn=document.createElement('button');bellBtn.type='button';bellBtn.textContent='🔔 종소리 꺼짐';let bellOn=false;
 bellBtn.onclick=()=>{bellOn=!bellOn;crossing.setSound(bellOn);bellBtn.textContent=bellOn?'🔔 종소리 켜짐':'🔔 종소리 꺼짐'};
@@ -282,6 +283,6 @@ function frame(){
   if(freeCam.on)flyFreeCam(dt);else{const vp=viewport();spatial.update({x:(ve.x-vp.ox)*K,y:(ve.y-vp.oy)*K,z:ve.z*K})}
   if(character){character.lookTarget=camera.position;character.update(dt);const c=character.bones['センター'].getWorldPosition(blob.position);stage.worldToLocal(c);c.y=.01}
   debugPanel.textContent=`filtered eye (m)\nx ${eye.x.toFixed(3)}\ny ${eye.y.toFixed(3)}\nz ${eye.z.toFixed(3)}\n\nraw z ${rawEye.z.toFixed(3)}\nHFOV ${calibration.data.cameraHFovDeg.toFixed(1)}°\nK ${K.toFixed(1)}`;
-  crossing.tick(clock.elapsedTime,dt);weather.tick(clock.elapsedTime,dt);if(classroom.group.visible)classroom.tick(clock.elapsedTime);foliage?.tick(clock.elapsedTime);gi.tick(REFS.emitters);
+  crossing.tick(clock.elapsedTime,dt);weather.tick(clock.elapsedTime,dt);for(const m of Object.values(maps))if(m.group.visible)m.tick(clock.elapsedTime);foliage?.tick(clock.elapsedTime);gi.tick(REFS.emitters);
   post.render();requestAnimationFrame(frame)
 }frame();

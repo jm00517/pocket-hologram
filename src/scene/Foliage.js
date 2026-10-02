@@ -176,13 +176,13 @@ function makeTree(seed) {
   leaves.setIndex(idx);
   return { leaves, wood: mergeGeometries(wood) };
 }
-function trees(spots) {
+export function trees(spots, ground = groundY) {
   const leafMat = windy(new THREE.MeshStandardMaterial({ map: leafTexture(), alphaTest: 0.5, side: THREE.DoubleSide, vertexColors: true, roughness: 0.85 }), 0.1, 6);
   const barkMat = new THREE.MeshStandardMaterial({ color: '#5e4a3a', roughness: 0.95 });
   REFS.leaves.push(leafMat); leafMat.userData.dry = { color: leafMat.color.clone(), map: leafMat.map };
   const group = new THREE.Group();
   [makeTree(7), makeTree(31)].forEach((t, v) => {
-    const ts = spots.filter((_, i) => i % 2 === v).map(([x, z, sc]) => place(x, z, sc));
+    const ts = spots.filter((_, i) => i % 2 === v).map(([x, z, sc]) => place(x, z, sc).setPosition(x, ground(z), z));
     for (const [geo, mat] of [[t.leaves, leafMat], [t.wood, barkMat]]) {
       const im = new THREE.InstancedMesh(geo, mat, ts.length);
       ts.forEach((m, i) => im.setMatrixAt(i, m));
