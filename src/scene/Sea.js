@@ -73,7 +73,7 @@ export function createSea() {
     return `seaWave(p, vec2(${(dx / l).toFixed(4)}, ${(dz / l).toFixed(4)}), ${k.toFixed(4)}, ${(k * c).toFixed(4)}, ${A.toFixed(3)} * amp, ${Q.toFixed(3)}, disp, nrm);`;
   }).join('\n');
   const make = (ampScale) => {
-    const m = new THREE.MeshStandardMaterial({ color: '#ffffff', roughness: 0.05, metalness: 0.05, fog: false });
+    const m = new THREE.MeshStandardMaterial({ color: '#ffffff', roughness: 0.05, metalness: 0.05, envMapIntensity: 0.55, fog: false });
     m.onBeforeCompile = (s) => {
       Object.assign(s.uniforms, uniforms, { uAmp: { value: ampScale } });
       s.vertexShader = s.vertexShader
@@ -121,12 +121,12 @@ export function createSea() {
           water = mix(water, uReef, reef * 0.55 * smoothstep(18.0, 40.0, shoreD) * (1.0 - smoothstep(160.0, 280.0, shoreD)));
           diffuseColor.rgb = mix(water * 0.45, vec3(0.95), foam); // the sun is ~3.4: more and the shallows go neon`)
         .replace('#include <roughnessmap_fragment>', `#include <roughnessmap_fragment>
-          roughnessFactor = mix(mix(0.06, 0.16, smoothstep(30.0, 1500.0, seaDist)), 0.85, foam); // sharper glints bloomed into squares`)
+          roughnessFactor = mix(mix(0.16, 0.24, smoothstep(30.0, 1500.0, seaDist)), 0.85, foam); // blurs the sky reflection into soft sheen // sharper glints bloomed into squares`)
         .replace('#include <normal_fragment_maps>', `
           vec2 q = vSea.xz;
-          vec3 n1 = texture2D(tDetail, q / 9.0 + uTime * vec2(0.012, 0.035)).xyz * 2.0 - 1.0;
-          vec3 n2 = texture2D(tDetail, q / 31.0 + uTime * vec2(-0.018, 0.014)).xyz * 2.0 - 1.0;
-          vec3 nd = normalize(vec3((n1.xy + n2.xy) * 0.16, n1.z * n2.z)); // glassy
+          vec3 n1 = texture2D(tDetail, q / 20.0 + uTime * vec2(0.006, 0.018)).xyz * 2.0 - 1.0;
+          vec3 n2 = texture2D(tDetail, q / 57.0 + uTime * vec2(-0.009, 0.007)).xyz * 2.0 - 1.0;
+          vec3 nd = normalize(vec3((n1.xy + n2.xy) * 0.07, n1.z * n2.z)); // broad and soft: dense ripples turned the sky reflection into busy speckle
           nd = normalize(mix(nd, vec3(0.0, 0.0, 1.0), smoothstep(30.0, 350.0, seaDist))); // far ripples alias into radial streaks
           normal = normalize(vT * nd.x + vB * nd.y + normal * nd.z);`)
         .replace('#include <emissivemap_fragment>', `#include <emissivemap_fragment>
