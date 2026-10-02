@@ -46,8 +46,6 @@ MMD 에셋은 이 레포에 포함하지 않고 three.js r170 원본 위치에�
 - Mixamo FBX → `assets/motions/`에 넣고 `bash scripts/fbx2vmd.sh` (reze-rig, MIT).
 - 반다이남코 리서치 모션 데이터셋 → `bash scripts/get-bandai.sh` (Blender 필요).
   BVH의 0-회전 자세가 사람 자세가 아니라서 `scripts/bvh2fbx.py`가 T자 기준 자세를 계산해 바인드로 쓴다.
-- 텍스트로 모션 생성: `bash scripts/gen-motions.sh` — MoMask(MIT, HumanML3D 학습 → 비상업)로
-  `scripts/motion_prompts.txt`의 문장마다 3개씩 만들어 `assets/motions/gen/vmd`로 변환. 첫 실행 때 설치까지 한다.
   (HY-Motion은 라이선스가 한국을 제외해서 쓰지 않는다.)
 - 모션 파일은 `assets/`(gitignore)에만 둔다.
 
@@ -73,14 +71,17 @@ Pocket Hologram의 구현 코드는 위 프로젝트 코드를 복사하지 않�
 폰에서 바로: https://jm00517.github.io/pocket-hologram/
 (repo Settings → Pages → Source: Deploy from a branch, `main` / `/ (root)` 한 번만 켜면 됨. Actions 불필요.)
 
-로컬 개발 서버 (정적 파일 + 웹에서 텍스트→모션 생성 API):
+로컬 개발 서버 (정적 파일, 캐시 없음):
 
 ```bash
 python scripts/server.py          # http://localhost:3210
 ```
 
-화면 위쪽 입력창에 영어 문장을 넣고 "생성"을 누르면 MoMask → Blender → VMD 변환 후 바로 재생된다(약 45초).
-생성 기능 없이 보기만 할 거면 정적 서버(`npx serve -l 3210 .`)도 된다.
+아무 정적 서버(`npx serve -l 3210 .`)로도 된다.
+
+화면 오른쪽 위 ☰ 메뉴에 기능별로 모여 있다. 장면(배경, 날씨, 종소리), 캐릭터(모델, 모션, 표정, 손, 반응),
+그래픽(노출, 조명, GI, 블룸, 색보정 슬라이더. 날씨를 바꾸면 그 날씨 값으로 돌아간다), 설정(캘리브레이션, 디버그).
+🎥 자유 카메라(F): 화면 클릭으로 마우스를 잡고 WASD·Space/C·Shift로 이동, 다시 클릭하면 조준한 땅으로 미쿠가 간다.
 카메라 API는 secure context(HTTPS 또는 localhost)가 필요하므로 폰은 USB 연결 후 `adb reverse tcp:3210 tcp:3210`.
 
 ## Calibration

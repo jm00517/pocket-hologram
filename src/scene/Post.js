@@ -92,7 +92,7 @@ export function createPost(renderer, scene, camera, outline) {
   composer.addPass(smaa);
   const perf = new URLSearchParams(location.search).has('perf') ? gpuProfiler(renderer, composer) : null;
   return {
-    composer, ao, bloom,
+    composer, ao, bloom, gradeU: grade.uniforms,
     setSize(w, h, ratio) {
       composer.setPixelRatio(ratio); composer.setSize(w, h);
       ao.setSize((w * ratio) / 2, (h * ratio) / 2); // AO is low-frequency: half res is ~4x cheaper and looks the same

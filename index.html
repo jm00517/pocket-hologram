@@ -3,4 +3,12 @@
 "three":"https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js",
 "three/addons/":"https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/",
 "@mediapipe/tasks-vision":"https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.21/vision_bundle.mjs"
-}}</script></head><body><div id="app"><video id="camera" playsinline muted></video><canvas id="scene"></canvas><div id="hud"><button id="start">Start camera</button><label>Model<input id="modelFile" type="file" multiple accept=".glb,.gltf,.fbx,.pmx,.pmd,.vmd,.vpd,.png,.jpg,.jpeg,.bmp,.tga,.spa,.sph,.bin"/></label><select id="modelSel"></select><select id="motion" class="hidden"></select><button id="calibrate">Calibration</button><button id="debug">Debug</button><button id="fullscreen">Fullscreen</button><div id="status">idle</div></div><div id="calibration" class="panel hidden"></div><pre id="debugPanel" class="debug hidden"></pre><div id="drop" class="hidden">모델 + 텍스처 파일을 함께 놓으세요 (.glb .gltf .fbx .pmx .pmd)</div></div><script type="module" src="./src/main.js"></script></body></html>
+}}</script></head><body><div id="app"><video id="camera" playsinline muted></video><canvas id="scene"></canvas><div id="status">idle</div>
+<div id="bar"><button id="start" title="카메라 머리 추적">📷 추적</button><button id="freeBtn" title="자유 카메라 (F)">🎥 자유 카메라</button><button id="fullscreen" title="전체화면">⛶</button><button id="menuBtn" title="메뉴">☰</button></div>
+<aside id="drawer" class="hidden">
+<details open><summary>장면</summary><div id="sceneCtl" class="grid"></div></details>
+<details open><summary>캐릭터</summary><div id="charCtl" class="grid"><label class="file">모델 파일 열기<input id="modelFile" type="file" multiple accept=".glb,.gltf,.fbx,.pmx,.pmd,.vmd,.vpd,.png,.jpg,.jpeg,.bmp,.tga,.spa,.sph,.bin"/></label><select id="modelSel"></select><select id="motion" class="hidden"></select></div><div id="charRows"></div></details>
+<details><summary>그래픽</summary><div id="gfxCtl"></div></details>
+<details><summary>설정</summary><div class="grid"><button id="calibrate">캘리브레이션</button><button id="debug">디버그</button></div><div id="calibration" class="panel hidden"></div></details>
+</aside>
+<pre id="debugPanel" class="debug hidden"></pre><div id="drop" class="hidden">모델 + 텍스처 파일을 함께 놓으세요 (.glb .gltf .fbx .pmx .pmd)</div></div><script type="module" src="./src/main.js"></script></body></html>

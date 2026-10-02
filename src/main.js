@@ -113,34 +113,22 @@ async function loadCharacter(url,manager){
     for(const n of [...c.director.have].sort())g.append(new Option(n,'lib:'+n));
     if(g.children.length)motionSel.insertBefore(g,motionSel.querySelector('optgroup'));
   });
-  // Generated clips (scripts/gen-motions.sh writes the index); loaded lazily on selection.
-  fetch('assets/motions/gen/vmd/index.json').then(r=>r.ok?r.json():[]).then(names=>{
-    if(!names.length)return;
-    const g=document.createElement('optgroup');g.label='generated';
-    for(const n of names)g.append(new Option(n,'gen:'+n));
-    motionSel.append(g);
-  }).catch(()=>{});
   motionSel.classList.remove('hidden');
   status.textContent='ready';
 }
-// Text -> motion from the page (needs scripts/server.py; the plain static server has no /api)
-const genBox=document.createElement('form');genBox.id='gen';
-genBox.innerHTML='<input placeholder="motion prompt (English), e.g. a person waves hello shyly" maxlength="200"><select><option>2</option><option selected>3</option><option>4</option><option>6</option><option>9</option></select><span>s</span><button>생성</button>';
-document.getElementById('hud').after(genBox);
-const resetBtn=document.createElement('button');resetBtn.textContent='Reset pose';resetBtn.type='button';
+const resetBtn=document.createElement('button');resetBtn.textContent='포즈 리셋';resetBtn.type='button';
 resetBtn.onclick=()=>{if(!character)return;character.reset();character.idle=true;character.director.enabled=true;motionSel.value='idle';status.textContent='reset'};
-motionSel.after(resetBtn);
-const bgSel=document.createElement('select');bgSel.innerHTML='<option value="crossing">踏切</option><option value="grid">grid</option>';bgSel.value=bg;
+const bgSel=document.createElement('select');bgSel.innerHTML='<option value="crossing">배경: 踏切</option><option value="grid">배경: 그리드</option>';bgSel.value=bg;
 bgSel.onchange=()=>{bg=bgSel.value;applyBackground()};
-const bellBtn=document.createElement('button');bellBtn.type='button';bellBtn.textContent='🔔 off';let bellOn=false;
-bellBtn.onclick=()=>{bellOn=!bellOn;crossing.setSound(bellOn);bellBtn.textContent=bellOn?'🔔 on':'🔔 off'};
+const bellBtn=document.createElement('button');bellBtn.type='button';bellBtn.textContent='🔔 종소리 꺼짐';let bellOn=false;
+bellBtn.onclick=()=>{bellOn=!bellOn;crossing.setSound(bellOn);bellBtn.textContent=bellOn?'🔔 종소리 켜짐':'🔔 종소리 꺼짐'};
 weatherSel=document.createElement('select');weatherSel.innerHTML=weather.list().map(([k,l])=>`<option value="${k}">${l}</option>`).join('');weatherSel.value=weatherName;
-weatherSel.onchange=()=>{weatherName=weatherSel.value;if(bg==='crossing')weather.set(weatherName,charHeight/1.6).then(captureGI)};
+weatherSel.onchange=()=>{weatherName=weatherSel.value;if(bg==='crossing')weather.set(weatherName,charHeight/1.6).then(()=>{captureGI();syncGfx()})};
 // Free camera: F or the button toggles; click the view to grab the mouse (Esc releases). WASD move,
 // Space/C up/down, Shift fast. The head-coupled window view is suspended while it's on.
 const freeCam={on:false,keys:new Set(),controls:new PointerLockControls(camera,canvas)};
-const freeBtn=document.createElement('button');freeBtn.type='button';freeBtn.textContent='🎥 free cam';
-function toggleFree(){freeCam.on=!freeCam.on;freeBtn.textContent=freeCam.on?'🎥 free cam ON (F)':'🎥 free cam';if(!freeCam.on)freeCam.controls.unlock()}
+const freeBtn=$('#freeBtn');
+function toggleFree(){freeCam.on=!freeCam.on;freeBtn.classList.toggle('on',freeCam.on);if(!freeCam.on)freeCam.controls.unlock()}
 freeBtn.onclick=toggleFree;
 // Moving her: she stays put at the window's centre and the crossing slides under her (focus = her spot in
 // crossing metres), so her physics never sees a jump. In free cam with the mouse grabbed, a click sends her to
@@ -174,29 +162,38 @@ function flyFreeCam(dt){
   camera.position.y+=((k.has('Space')?1:0)-(k.has('KeyC')?1:0))*v;
   camera.aspect=innerWidth/innerHeight;camera.fov=60;camera.updateProjectionMatrix();
 }
-resetBtn.after(bgSel,weatherSel,bellBtn,freeBtn);
-genBox.onsubmit=async(e)=>{
-  e.preventDefault();
-  const [inp,sec]=genBox.querySelectorAll('input,select'),btn=genBox.querySelector('button'),prompt=inp.value.trim();
-  if(!prompt||!character)return;
-  btn.disabled=true;const t0=performance.now();
-  const tick=setInterval(()=>status.textContent=`generating… ${((performance.now()-t0)/1000)|0}s`,500);
-  try{
-    const r=await fetch('api/generate',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({prompt,seconds:+sec.value,variants:2})});
-    const j=await r.json().catch(()=>({error:`HTTP ${r.status} (run python scripts/server.py)`}));
-    if(!r.ok||j.error)throw new Error(j.error||r.status);
-    let g=motionSel.querySelector('optgroup');
-    if(!g){g=document.createElement('optgroup');g.label='generated';motionSel.append(g)}
-    for(const n of j.names)if(![...g.children].some(o=>o.value==='gen:'+n))g.append(new Option(n,'gen:'+n));
-    clearInterval(tick);motionSel.value='gen:'+j.names[0];await motionSel.onchange();
-  }catch(err){clearInterval(tick);status.textContent='generate failed: '+(err.message||err)}
-  finally{btn.disabled=false}
-};
+$('#sceneCtl').append(bgSel,weatherSel,bellBtn);
+$('#motion').after(resetBtn);
+$('#menuBtn').onclick=()=>{$('#drawer').classList.toggle('hidden');$('#menuBtn').classList.toggle('on')};
+
+// Graphics: live sliders over the values the weather presets set. Picking a weather re-reads them.
+const GFX=[ // label, get, set, min, max, step
+  ['노출',()=>renderer.toneMappingExposure,v=>renderer.toneMappingExposure=v,0.3,2,0.01],
+  ['앰비언트',()=>ambient.intensity,v=>ambient.intensity=v,0,3,0.01],
+  ['키라이트',()=>gi.key.intensity,v=>gi.key.intensity=v,0,6,0.05],
+  ['GI 색조',()=>gi.strength.value,v=>gi.strength.value=v,0,1.5,0.01],
+  ['발광체 빛',()=>gi.emGain.value,v=>gi.emGain.value=v,0,5,0.05],
+  ['해',()=>crossing.sun.intensity,v=>crossing.sun.intensity=v,0,8,0.05],
+  ['하늘 반사',()=>scene.environmentIntensity,v=>scene.environmentIntensity=v,0,2,0.01],
+  ['하늘 밝기',()=>scene.backgroundIntensity,v=>scene.backgroundIntensity=v,0,2,0.01],
+  ['블룸',()=>post.bloom.strength,v=>post.bloom.strength=v,0,2,0.01],
+  ['블룸 기준',()=>post.bloom.threshold,v=>post.bloom.threshold=v,0.2,3,0.01],
+  ['AO',()=>post.ao.blendIntensity,v=>post.ao.blendIntensity=v,0,1.5,0.01],
+  ['채도',()=>post.gradeU.sat.value,v=>post.gradeU.sat.value=v,0,2,0.01],
+  ['대비',()=>post.gradeU.contrast.value,v=>post.gradeU.contrast.value=v,0.5,1.5,0.01],
+  ['세피아',()=>post.gradeU.sepia.value,v=>post.gradeU.sepia.value=v,0,1,0.01],
+  ['비네트',()=>post.gradeU.vignette.value,v=>post.gradeU.vignette.value=v,0,1,0.01],
+];
+const gfxCtl=$('#gfxCtl');
+gfxCtl.innerHTML=GFX.map(([l,,,mn,mx,st],i)=>`<label class="slider">${l}<input type="range" min="${mn}" max="${mx}" step="${st}" data-i="${i}"><output></output></label>`).join('')+'<button type="button" data-gfx-reset>날씨 기본값으로</button>';
+gfxCtl.querySelectorAll('input').forEach(el=>el.oninput=()=>{const v=+el.value;GFX[el.dataset.i][2](v);el.nextElementSibling.textContent=v.toFixed(2)});
+function syncGfx(){gfxCtl.querySelectorAll('input').forEach(el=>{const v=GFX[el.dataset.i][1]();el.value=v;el.nextElementSibling.textContent=(+v).toFixed(2)})}
+gfxCtl.querySelector('[data-gfx-reset]').onclick=()=>weatherSel.onchange();
+$('#drawer').addEventListener('toggle',e=>{if(e.target.open&&e.target.contains(gfxCtl))syncGfx()},true);
 motionSel.onchange=async()=>{
   const n=motionSel.value;status.textContent=`loading ${n}...`;
   try{
-    character.idle=n==='idle'||n.startsWith('pose')||n.startsWith('gen:')||n.startsWith('lib:');character.director.enabled=n==='idle';
-    if(n.startsWith('gen:')&&!character.actions[n])await character.addMotion(n,'assets/motions/gen/vmd/'+encodeURIComponent(n.slice(4))+'.vmd');
+    character.idle=n==='idle'||n.startsWith('pose')||n.startsWith('lib:');character.director.enabled=n==='idle';
     if(n==='idle')character.director.toBase();else await character.play(n.startsWith('lib:')?n.slice(4):n);status.textContent=n}
   catch(e){status.textContent='error: '+(e.message||e)}
 };
@@ -229,7 +226,7 @@ $('#fullscreen').onclick=()=>{document.documentElement.requestFullscreen?.();scr
 $('#calibrate').onclick=()=>calPanel.classList.toggle('hidden');
 $('#debug').onclick=()=>debugPanel.classList.toggle('hidden');
 bindCalibrationPanel(calPanel,calibration,layout);
-window.chat=mountChatBar(()=>character?.behavior);
+window.chat=mountChatBar(()=>character?.behavior,$('#charRows'));
 
 function resize(){renderer.setSize(innerWidth,innerHeight,false);post.setSize(innerWidth,innerHeight,renderer.getPixelRatio());layout()}addEventListener('resize',resize);addEventListener('fullscreenchange',resize);resize();
 // Local models live in assets/ (gitignored, MMD licenses forbid redistribution). The first one that exists

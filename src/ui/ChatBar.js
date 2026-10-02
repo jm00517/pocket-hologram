@@ -19,27 +19,30 @@ function pickVoice(lang) {
 // ponytail: echo placeholder; replace with the LLM call (return the reply text).
 async function reply(text) { return text; }
 
-export function mountChatBar(getBehavior) {
+// controls go in the drawer's character section; only the chat input sits at the bottom of the screen
+export function mountChatBar(getBehavior, controlsRoot) {
+  const ctl = document.createElement('div');
+  ctl.innerHTML = `
+    <h4>표정</h4><div class="chips">${FACES.map((f) => `<button data-f="${f}">${f}</button>`).join('')}</div>
+    <label class="check"><input type="checkbox" data-hold> 표정 유지</label>
+    <h4>손</h4><div class="chips">${HAND_MODES.map((h) => `<button data-h="${h}">${h}</button>`).join('')}</div>
+    <h4>반응 모션</h4><div class="chips">${MOTIONS.map((r) => `<button data-r="${r}">${r}</button>`).join('')}</div>
+    <h4>대화 상태</h4><select data-s>${STATES.map((s) => `<option>${s}</option>`).join('')}</select>
+    <label class="check"><input type="checkbox" data-inertia checked> 관성 블렌딩</label>`;
+  controlsRoot.append(ctl);
   const bar = document.createElement('div');
   bar.id = 'chat';
-  bar.innerHTML = `
-    <div class="row"><b>표정</b>${FACES.map((f) => `<button data-f="${f}">${f}</button>`).join('')}
-      <label><input type="checkbox" data-hold> 유지</label></div>
-    <div class="row"><b>손</b>${HAND_MODES.map((h) => `<button data-h="${h}">${h}</button>`).join('')}</div>
-    <div class="row"><b>모션</b>${MOTIONS.map((r) => `<button data-r="${r}">${r}</button>`).join('')}
-      <select data-s>${STATES.map((s) => `<option>${s}</option>`).join('')}</select>
-      <label><input type="checkbox" data-inertia checked> 관성 블렌딩</label></div>
-    <form class="row"><input placeholder="말 걸기 (지금은 따라 말함)" autocomplete="off"><button>보내기</button></form>`;
+  bar.innerHTML = `<form><input placeholder="말 걸기 (지금은 따라 말함)" autocomplete="off"><button>보내기</button></form>`;
   document.body.append(bar);
-  const input = bar.querySelector('input'), stateSel = bar.querySelector('[data-s]');
+  const input = bar.querySelector('input'), stateSel = ctl.querySelector('[data-s]');
   const b = () => getBehavior();
 
-  bar.querySelectorAll('[data-r]').forEach((el) => (el.onclick = () => b()?.react(el.dataset.r)));
-  bar.querySelectorAll('[data-h]').forEach((el) => (el.onclick = () => b()?.c.hands.set(el.dataset.h)));
-  const hold = bar.querySelector('[data-hold]');
-  bar.querySelectorAll('[data-f]').forEach((el) => (el.onclick = () => b()?.express(el.dataset.f, { hold: hold.checked })));
+  ctl.querySelectorAll('[data-r]').forEach((el) => (el.onclick = () => b()?.react(el.dataset.r)));
+  ctl.querySelectorAll('[data-h]').forEach((el) => (el.onclick = () => b()?.c.hands.set(el.dataset.h)));
+  const hold = ctl.querySelector('[data-hold]');
+  ctl.querySelectorAll('[data-f]').forEach((el) => (el.onclick = () => b()?.express(el.dataset.f, { hold: hold.checked })));
   stateSel.onchange = () => b()?.setState(stateSel.value);
-  bar.querySelector('[data-inertia]').onchange = (e) => { if (b()) b().c.inertialBlend = e.target.checked; };
+  ctl.querySelector('[data-inertia]').onchange = (e) => { if (b()) b().c.inertialBlend = e.target.checked; };
   input.oninput = () => { if (input.value && b()?.state === 'idle') b().setState('listening'); };
   input.onblur = () => { if (!input.value && b()?.state === 'listening') b().setState('idle'); };
 
