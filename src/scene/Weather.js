@@ -33,8 +33,8 @@ export const WEATHERS = {
     char: { amb: ['#cdd2d8', 0.65], key: ['#fafbff', 3.0] }, grade: { tint: [0.97, 0.99, 1.04], sat: 0.96, contrast: 1.02, sepia: 0, vignette: 0.26 }, bloom: 0.35, snow: 1, flare: false,
   },
   night: {
-    label: '밤', hdri: 'night', skyTame: [0.4, 2.5], az: 120, minElev: 25, env: 0.35, bg: 0.75, exposure: 1.25, sun: ['#9fb3ff', 0.35], fog: ['#141c2e', 20, 260],
-    char: { amb: ['#8e9cc8', 0.55], key: ['#ffd2a0', 1.3] }, grade: { tint: [0.92, 0.96, 1.1], sat: 0.95, contrast: 1.08, sepia: 0, vignette: 0.45 }, bloom: 0.55, night: 1, flare: false,
+    label: '밤', hdri: 'night', skyTame: [0.4, 2.5], az: 120, minElev: 25, env: 0.2, bg: 0.4, exposure: 0.95, sun: ['#9fb3ff', 0.2], fog: ['#0b1120', 20, 260],
+    char: { amb: ['#7d8cbc', 0.4], key: ['#ffd2a0', 0.95] }, grade: { tint: [0.9, 0.95, 1.1], sat: 0.95, contrast: 1.1, sepia: 0, vignette: 0.5 }, bloom: 0.55, night: 1, flare: false,
   },
   // よふかしのうた-style night: violet shadows everywhere, magenta/cyan glow off the vending corner rimming her from
   // behind, coloured windows, pink haze on the ground, whole frame graded toward purple
