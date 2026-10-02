@@ -226,9 +226,9 @@ function railway(g) {
   const z0 = TRACK_Z;
   const ballast = canvasTex(256, 256, speckle('#a29c92', [110, 90], 7000, 3), [80, 1]);
   g.add(REFS.ballast = shadows(box(400, 0.28, 4.2, pbr('#ffffff', { map: ballast, roughness: 1 }), 0, 0.06, z0), false));
-  // near ±50 m: a photoscanned track section ("Railway Track 3D scan", Sketchfab, CC BY 4.0) scaled to the
+  // near ±26 m: a photoscanned track section ("Railway Track 3D scan", Sketchfab, CC BY 4.0) scaled to the
   // 1067 mm gauge, 1.44 m per piece, instanced; it loads after settle(), so it applies the hill itself
-  const PIECE = 1.44, N = 70;
+  const PIECE = 1.44, N = 36;
   trackModel.then((src) => {
     src.traverse((o) => {
       if (!o.isMesh) return;
@@ -320,10 +320,10 @@ function utilityPoles(g) {
 }
 
 // Japanese drink machine: "Red Japanese Vending Machine" (tokyo45otaku, Sketchfab, CC BY 4.0, see CREDITS) with
-// modelled sample cans and bottles. Per style the body is repainted and the tube light tinted; a glowing panel
-// behind the samples backlights them like the real thing, and three shelf emitters carry that light to her.
+// modelled sample cans and bottles. Per style the body is repainted; a glowing panel behind the samples
+// backlights them like the real thing, and three shelf emitters carry that light to her.
 const VM_STYLES = {
-  cool: { door: '#c81a1a', glow: '#e4f0ff' },
+  cool: { door: '#d01c1c', glow: '#e4f0ff' },
   sakura: { door: '#e0217f', glow: '#ff3fc0' },
   aqua: { door: '#0096ad', glow: '#2fe0ff' },
   night: { door: '#6b33c9', glow: '#9a5cff' },
@@ -331,19 +331,46 @@ const VM_STYLES = {
 };
 const vendingModel = gltf.loadAsync('assets/models/vending/vending.glb').then((m) => m.scene);
 const CASE = { x: -0.06, y: 1.25, z: 0.12, w: 0.86, h: 0.68 }; // showcase behind the glass, model space
-// the red livery is painted into the door texture: swap red texels for the style colour at the same brightness
-function repaint(mat, color) {
-  const m = mat.clone(), c = new THREE.Color(color);
+// the red livery is painted into the door texture: swap red texels for the instance colour at the same brightness
+function repaint(mat) {
+  const m = mat.clone();
   m.onBeforeCompile = (sh) => {
-    sh.uniforms.uPaint = { value: c };
     sh.fragmentShader = sh.fragmentShader
-      .replace('#include <common>', '#include <common>\nuniform vec3 uPaint;')
+      .replace('#include <color_fragment>', '') // vColor is the paint, not a tint
       .replace('#include <map_fragment>', `#include <map_fragment>
         float red = smoothstep(0.08, 0.35, diffuseColor.r - max(diffuseColor.g, diffuseColor.b));
-        diffuseColor.rgb = mix(diffuseColor.rgb, uPaint * diffuseColor.r * 1.6, red);`);
+        diffuseColor.rgb = mix(diffuseColor.rgb, vColor * diffuseColor.r * 1.6, red);`);
   };
-  m.customProgramCacheKey = () => 'repaint' + color;
+  m.customProgramCacheKey = () => 'repaint';
   return m;
+}
+// All machines share one set of instanced meshes (one per model material): 5 machines x 33 parts drew 165
+// meshes three times a frame (scene, shadows, AO). Only the body casts shadows.
+const vendingSlots = [];
+function buildVending(g) {
+  vendingModel.then((src) => {
+    src.updateMatrixWorld(true);
+    const lamp = new THREE.MeshStandardMaterial({ color: '#000000', emissive: '#f4f8ff', emissiveIntensity: 0.55 });
+    REFS.vending.push(lamp);
+    const m = new THREE.Matrix4();
+    src.traverse((o) => {
+      if (!o.isMesh) return;
+      const n = o.material.name;
+      let mat = o.material;
+      if (n === 'Vending_1_Red') { mat = mat.clone(); mat.color.set('#ffffff'); }
+      if (n === 'Vending_1') mat = repaint(mat);
+      if (n === 'Lamp_Light_bulb') mat = lamp;
+      const im = new THREE.InstancedMesh(o.geometry, mat, vendingSlots.length);
+      vendingSlots.forEach(({ vm, style }, i) => {
+        vm.updateMatrix();
+        im.setMatrixAt(i, m.multiplyMatrices(vm.matrix, o.matrixWorld));
+        if (n === 'Vending_1_Red' || n === 'Vending_1') im.setColorAt(i, new THREE.Color(style.door));
+      });
+      im.castShadow = /^Vending_1(_Red|_Black|_white)?$/.test(n); im.receiveShadow = true;
+      im.userData.draped = true; noOutline(im);
+      g.add(im);
+    });
+  });
 }
 function vendingMachine(g, x, z, rotY, style, { bins = true } = {}) {
   const vm = new THREE.Group(); vm.position.set(x, 0, z); vm.rotation.y = rotY;
@@ -351,18 +378,7 @@ function vendingMachine(g, x, z, rotY, style, { bins = true } = {}) {
   REFS.vending.push(back);
   const panel = new THREE.Mesh(new THREE.PlaneGeometry(CASE.w, CASE.h), back);
   panel.position.set(CASE.x, CASE.y, CASE.z); vm.add(panel);
-  vendingModel.then((src) => {
-    const c = src.clone();
-    c.traverse((o) => {
-      if (!o.isMesh) return;
-      noOutline(o);
-      const n = o.material.name;
-      if (n === 'Vending_1_Red') { o.material = o.material.clone(); o.material.color.set(style.door); }
-      if (n === 'Vending_1' && style !== VM_STYLES.cool) o.material = repaint(o.material, style.door);
-      if (n === 'Lamp_Light_bulb') o.material = back;
-    });
-    vm.add(shadows(c));
-  });
+  vendingSlots.push({ vm, style });
   for (let r = 0; r < 3; r++) {
     const a = new THREE.Object3D(); a.position.set(CASE.x, CASE.y + CASE.h / 2 - (r + 0.5) * CASE.h / 3, 0.36); vm.add(a);
     REFS.emitters.push({ obj: a, facing: true, color: new THREE.Color(style.glow), power: () => back.emissiveIntensity * 1.2, range: 5 });
@@ -529,6 +545,7 @@ export function createCrossing(renderer) {
   }
   const tr = train(g, glows);
   settle(g);
+  buildVending(g);
   // Blue Archive look: ink outlines on the character only, never on the background
   g.traverse((o) => { if (o.material) noOutline(o); });
 
