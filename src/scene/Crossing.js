@@ -11,7 +11,8 @@ const SUN_DIR = new THREE.Vector3(-0.45, 0.62, 0.64).normalize(); // high, front
 
 // Handles the weather system restyles (filled while building)
 export const REFS = { walls: [], roofs: [], leaves: [], windows: [], nightLights: [], redLights: [], lowTrees: [], emitters: [], vending: [], neonHaze: null };
-// emitters: things that glow onto the character in real time (GI.js). { obj, color, power() 0..1, range in m }
+// emitters: things that glow onto the character in real time (GI.js). { obj, color, power() 0..1, range in m,
+// facing?: emits only out of obj's +z (a lit panel) }
 const mats = new Map();
 function pbr(color, o = {}) {
   const key = color + JSON.stringify(o, (k, v) => (v?.isTexture ? v.uuid : v));
@@ -22,6 +23,14 @@ function pbr(color, o = {}) {
 const noOutline = (m) => { for (const mat of [].concat(m.material ?? [])) mat.userData.outlineParameters = { visible: false }; return m; };
 const shadows = (o, cast = true, recv = true) => { o.traverse((m) => { if (m.isMesh) { m.castShadow = cast; m.receiveShadow = recv; } }); return o; };
 
+// mean colour of a canvas region, as a linear THREE.Color
+function avgColor(canvas, x, y, w, h) {
+  const d = canvas.getContext('2d').getImageData(x, y, w, h).data;
+  let r = 0, g = 0, b = 0;
+  for (let i = 0; i < d.length; i += 4) { r += d[i]; g += d[i + 1]; b += d[i + 2]; }
+  const n = (d.length / 4) * 255;
+  return new THREE.Color().setRGB(r / n, g / n, b / n, THREE.SRGBColorSpace);
+}
 function canvasTex(w, h, draw, repeat, srgb = true) {
   const c = document.createElement('canvas');
   c.width = w; c.height = h;
@@ -302,9 +311,9 @@ function vendingMachine(g, x, z, rotY, style, { bins = true } = {}) {
           c.fillStyle = 'rgba(255,255,255,0.75)'; c.fillRect(cx - bw / 2 + 6, top + 26, bw - 12, 14);
         }
         c.fillStyle = 'rgba(255,255,255,0.35)'; c.fillRect(cx - bw / 2 + 4, top + 10, 4, bh - 14); // cylinder highlight
-        if (e) { // samples block the backlight: only a rim of their colour glows
-          c.fillStyle = 'rgba(0,0,0,0.82)';
-          if (bottle) { c.fillRect(cx - bw / 2, top + 22, bw, bh - 22); c.fillRect(cx - 7, top + 6, 14, 18); } else c.fillRect(cx - bw / 2, top, bw, bh);
+        if (e) { // backlight through the samples: cans block it, PET bottles pass it tinted by their label
+          if (bottle) { c.globalAlpha = 0.75; c.fillStyle = lab; c.fillRect(cx - bw / 2, top + 22, bw, bh - 22); c.globalAlpha = 1; }
+          else { c.fillStyle = 'rgba(0,0,0,0.85)'; c.fillRect(cx - bw / 2, top, bw, bh); }
         }
         // price tag + push button (blue = cold, red = hot, a couple sold out)
         const ty = base + 10, sold = (r * 5 + i) % 11 === 3;
@@ -350,7 +359,12 @@ function vendingMachine(g, x, z, rotY, style, { bins = true } = {}) {
   const caseMat = new THREE.MeshStandardMaterial({ map: caseMap, emissive: style.glow, emissiveMap: caseGlow, emissiveIntensity: 0.55, roughness: 0.7 });
   const sc = new THREE.Mesh(new THREE.PlaneGeometry(0.86, sh), caseMat);
   sc.position.set(0, cy, 0.385); vm.add(sc); REFS.vending.push(caseMat);
-  REFS.emitters.push({ obj: sc, color: new THREE.Color(style.glow), power: () => caseMat.emissiveIntensity * 0.6, range: 5 });
+  // one emitter per shelf, facing out of the glass, coloured by what that shelf's samples let through
+  const tint = new THREE.Color(style.glow);
+  for (let r = 0; r < 3; r++) {
+    const a = new THREE.Object3D(); a.position.set(0, sh / 2 - (r + 0.5) * sh / 3, 0.01); sc.add(a);
+    REFS.emitters.push({ obj: a, facing: true, color: avgColor(caseGlow.image, 0, (r * SH) / 3, SW, SH / 3).multiply(tint), power: () => caseMat.emissiveIntensity * 1.2, range: 5 });
+  }
   const frame = pbr('#c3cad1', { roughness: 0.3, metalness: 0.6 });
   for (const [w, h, fx, fy] of [[0.94, 0.04, 0, cy + sh / 2 + 0.02], [0.94, 0.04, 0, cy - sh / 2 - 0.02], [0.04, sh, -0.45, cy], [0.04, sh, 0.45, cy]]) vm.add(box(w, h, 0.05, frame, fx, fy, 0.405));
   const glass = new THREE.MeshStandardMaterial({ color: '#ffffff', transparent: true, opacity: 0.08, roughness: 0.02, metalness: 1, depthWrite: false });

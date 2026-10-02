@@ -11,12 +11,13 @@
 import * as THREE from 'three';
 import { LightProbeGenerator } from 'three/addons/lights/LightProbeGenerator.js';
 
-const MAX_EM = 12;
+const MAX_EM = 24;
 
 export function createGI(renderer) {
   const sh = { value: Array.from({ length: 9 }, () => new THREE.Vector3()) }, strength = { value: 0.6 };
   const emPos = { value: Array.from({ length: MAX_EM }, () => new THREE.Vector3()) };
   const emCol = { value: Array.from({ length: MAX_EM }, () => new THREE.Vector3()) };
+  const emNrm = { value: Array.from({ length: MAX_EM }, () => new THREE.Vector3()) }; // zero = omni
   const emRange = { value: new Float32Array(MAX_EM).fill(1) }, emGain = { value: 1.2 };
   // same shape the weather code already drives on a DirectionalLight (color, intensity, position)
   const key = { color: new THREE.Color('#ffffff'), intensity: 2.5, position: new THREE.Vector3(-1, 1, 1) };
@@ -28,7 +29,7 @@ export function createGI(renderer) {
     key, strength, emGain,
     patch(mat) {
       mat.onBeforeCompile = (s) => {
-        Object.assign(s.uniforms, { uGI: sh, uGIStrength: strength, uKeyColor: keyColor, uKeyDir: keyDir, uEmPos: emPos, uEmCol: emCol, uEmRange: emRange });
+        Object.assign(s.uniforms, { uGI: sh, uGIStrength: strength, uKeyColor: keyColor, uKeyDir: keyDir, uEmPos: emPos, uEmCol: emCol, uEmNrm: emNrm, uEmRange: emRange });
         s.fragmentShader = s.fragmentShader
           .replace('#include <common>', `#include <common>
             uniform vec3 uGI[ 9 ];
@@ -37,6 +38,7 @@ export function createGI(renderer) {
             uniform vec3 uKeyDir;
             uniform vec3 uEmPos[ ${MAX_EM} ];
             uniform vec3 uEmCol[ ${MAX_EM} ];
+            uniform vec3 uEmNrm[ ${MAX_EM} ];
             uniform float uEmRange[ ${MAX_EM} ];`)
           .replace('#include <lights_fragment_maps>', `#include <lights_fragment_maps>
             // tint only: the probe's brightness gradient on a toon face reads as muddy smudges, so keep its hue
@@ -48,6 +50,8 @@ export function createGI(renderer) {
               vec3 toEm = ( viewMatrix * vec4( uEmPos[ i ], 1.0 ) ).xyz - geometryPosition;
               float d = length( toEm ), fall = clamp( 1.0 - d / uEmRange[ i ], 0.0, 1.0 );
               vec3 L = toEm / max( d, 1e-4 );
+              // panel emitters (vending glass) only light what's in front of them
+              fall *= dot( uEmNrm[ i ], uEmNrm[ i ] ) > 0.5 ? saturate( dot( ( viewMatrix * vec4( uEmNrm[ i ], 0.0 ) ).xyz, - L ) ) : 1.0;
               float wrap = clamp( ( dot( geometryNormal, L ) + 0.4 ) / 1.4, 0.0, 1.0 );
               irradiance += uEmCol[ i ] * fall * wrap;
               // light from behind her (the crossing lamps) shows as a coloured rim on the silhouette, anime style
@@ -73,6 +77,7 @@ export function createGI(renderer) {
         e?.obj.traverseAncestors((a) => { on &&= a.visible; });
         if (!on) { col.set(0, 0, 0); continue; }
         e.obj.getWorldPosition(emPos.value[i]);
+        if (e.facing) e.obj.getWorldDirection(emNrm.value[i]); else emNrm.value[i].set(0, 0, 0);
         emRange.value[i] = e.range * e.obj.getWorldScale(tmpV).x;
         col.set(e.color.r, e.color.g, e.color.b).multiplyScalar(e.power() * emGain.value);
       }
