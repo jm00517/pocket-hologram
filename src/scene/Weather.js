@@ -231,6 +231,7 @@ export function createWeather({ renderer, scene, crossing, post, ambient, key })
         for (const m of REFS.vending) m.emissiveIntensity = 0.55;
         for (const m of REFS.windows) m.emissiveIntensity = 0;
         if (REFS.neonHaze) REFS.neonHaze.visible = false;
+        for (const m of REFS.neonSigns) m.emissiveIntensity = 0;
         for (const n of REFS.nightLights) { n.light.intensity = 0; if (n.mat) n.mat.emissiveIntensity = 0; }
         if (reflector) reflector.visible = false; REFS.road.visible = true; if (snow) snow.visible = false; showPlants(true);
         return current;
@@ -282,6 +283,7 @@ export function createWeather({ renderer, scene, crossing, post, ambient, key })
       for (const m of REFS.windows) { m.emissiveIntensity = night ? 1.6 : name === 'sunset' ? 0.25 : 0; m.emissive.set(w.neon ? m.userData.neon : '#ffcf8a'); }
       for (const m of REFS.vending) m.emissiveIntensity = w.neon ? 1.0 : night ? 0.6 : w === WEATHERS.sunset ? 0.7 : 0.55;
       if (REFS.neonHaze) REFS.neonHaze.visible = !!w.neon;
+      for (const m of REFS.neonSigns) m.emissiveIntensity = w.neon ? 2.2 : night ? 1.2 : 0;
       return current;
     },
   };

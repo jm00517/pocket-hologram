@@ -10,7 +10,7 @@ const TRACK_Z = -11, CYCLE = 42, TRAIN_SPEED = 17; // m, s, m/s
 const SUN_DIR = new THREE.Vector3(-0.45, 0.62, 0.64).normalize(); // high, front-left: lights the face
 
 // Handles the weather system restyles (filled while building)
-export const REFS = { walls: [], roofs: [], leaves: [], windows: [], nightLights: [], redLights: [], lowTrees: [], emitters: [], vending: [], neonHaze: null };
+export const REFS = { walls: [], roofs: [], leaves: [], windows: [], nightLights: [], redLights: [], lowTrees: [], emitters: [], vending: [], neonSigns: [], neonHaze: null };
 // emitters: things that glow onto the character in real time (GI.js). { obj, color, power() 0..1, range in m,
 // facing?: emits only out of obj's +z (a lit panel) }
 const mats = new Map();
@@ -402,6 +402,31 @@ function vendingCorner(g) {
   g.add(haze); REFS.neonHaze = haze;
 }
 
+// Snack-bar A-frame on the verge behind her: pink neon script, low to the ground, so in the neon preset it
+// rims her from behind and below like the reference key art. Off by day (REFS.neonSigns, driven by Weather).
+function neonSign(g, x, z, rotY) {
+  const draw = (e) => (c, w, h) => {
+    c.fillStyle = e ? '#000' : '#1a1420'; c.fillRect(0, 0, w, h);
+    c.strokeStyle = '#ff4fd0'; c.lineWidth = 6; c.lineJoin = 'round';
+    c.beginPath(); c.roundRect(14, 14, w - 28, h - 28, 22); c.stroke();
+    c.fillStyle = '#ff4fd0'; c.textAlign = 'center';
+    c.font = 'bold 64px "Yu Gothic",sans-serif'; c.fillText('スナック', w / 2, h * 0.44);
+    c.font = 'italic bold 72px sans-serif'; c.fillText('ミク', w / 2, h * 0.8);
+    if (!e) { c.globalCompositeOperation = 'source-atop'; c.fillStyle = 'rgba(255,255,255,0.25)'; c.fillRect(0, 0, w, h); }
+  };
+  const map = canvasTex(256, 320, draw(false)), glow = canvasTex(256, 320, draw(true));
+  const face = new THREE.MeshStandardMaterial({ map, emissive: '#ffffff', emissiveMap: glow, emissiveIntensity: 0, roughness: 0.6 });
+  REFS.neonSigns.push(face);
+  const dark = pbr('#1a1420', { roughness: 0.6 });
+  const s = new THREE.Group(); s.position.set(x, 0, z); s.rotation.y = rotY;
+  for (const side of [1, -1]) { // two leaning boards
+    const b = shadows(box(0.5, 0.75, 0.02, [dark, dark, dark, dark, side > 0 ? face : dark, dark], 0, 0.36, side * 0.1));
+    b.rotation.x = -side * 0.14; s.add(b);
+  }
+  g.add(s);
+  REFS.emitters.push({ obj: s, color: new THREE.Color('#ff4fd0'), power: () => face.emissiveIntensity * 0.6, range: 6 });
+}
+
 function curveMirror(g, x, z, rotY) {
   const m = new THREE.Group(); m.position.set(x, 0, z); m.rotation.y = rotY;
   const orange = pbr('#ff7a1a', { roughness: 0.35 });
@@ -531,6 +556,7 @@ export function createCrossing(renderer) {
   utilityPoles(g); guardrails(g);
   vendingMachine(g, 4.0, -3.0, -Math.PI / 2 + 0.25, VM_STYLES.cool);
   vendingCorner(g);
+  neonSign(g, 2.85, -1.4, -0.45);
   curveMirror(g, 3.6, -7.6, -0.6);
   townscape(g);
   streetLamp(g, -3.9, -15.5, 0);
