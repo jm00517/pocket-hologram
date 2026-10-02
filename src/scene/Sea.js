@@ -3,17 +3,17 @@
 //  * Gerstner swell (4 waves rolling toward the beach) on a dense patch the size of the camera's view; past it
 //    a flat plane runs to the horizon (amplitude fades out before the seam),
 //  * two scrolling detail normal layers at different scales/directions (no visible tiling), faded with distance,
-//  * shallow turquoise by the beach to deep blue offshore, light through the wave crests,
-//  * crest foam and a surf line that runs up the sand and drains back,
+//  * clear tropical water: sand showing through at the edge, turquoise to cobalt by depth, reef patches,
+//    a caustic web in the shallows, a thin lace line lapping the sand,
 //  * distance haze toward the scene's fog colour (the sea itself skips three's fog so the far water isn't grey).
 // Local frame: origin on the waterline, +z toward the beach, y up, metres (the crossing group scales by U).
 import * as THREE from 'three';
 
 const WAVES = [ // direction (toward shore = +z), wavelength m, amplitude m, steepness
-  [0.18, 1, 34, 0.32, 0.55],
-  [-0.4, 1, 19, 0.16, 0.5],
-  [0.7, 1, 11, 0.07, 0.45],
-  [-0.9, 0.5, 6, 0.03, 0.4],
+  [0.18, 1, 34, 0.13, 0.5], // a calm, glassy lagoon swell (reference: clear tropical water)
+  [-0.4, 1, 19, 0.065, 0.45],
+  [0.7, 1, 11, 0.03, 0.4],
+  [-0.9, 0.5, 6, 0.012, 0.35],
 ];
 const NEAR_W = 500, NEAR_D = 320;
 
@@ -63,7 +63,9 @@ export function createSea() {
   const uniforms = {
     uTime: { value: 0 }, uU: { value: 1 },
     tDetail: { value: detailNormals() }, tFoam: { value: foamTex() },
-    uShallow: { value: new THREE.Color('#3d8c84') }, uDeep: { value: new THREE.Color('#123b48') }, // Sagami Bay: green-grey, not tropical
+    // clear water: sand showing through at the edge, turquoise, sky blue, cobalt offshore; darker reef/seagrass
+    uSandTint: { value: new THREE.Color('#bfe9e0') }, uShallow: { value: new THREE.Color('#45c9c6') },
+    uMid: { value: new THREE.Color('#2a9fd0') }, uDeep: { value: new THREE.Color('#0a55a8') }, uReef: { value: new THREE.Color('#0d5f72') },
     uHaze: { value: new THREE.Color('#cfe0ee') },
   };
   const wavesGLSL = WAVES.map(([dx, dz, L, A, Q]) => {
@@ -99,36 +101,45 @@ export function createSea() {
         .replace('#include <begin_vertex>', `vec3 transformed = position + disp; vSea = transformed;`);
       s.fragmentShader = s.fragmentShader
         .replace('#include <common>', `#include <common>
-          uniform float uTime, uU; uniform sampler2D tDetail, tFoam; uniform vec3 uShallow, uDeep, uHaze;
+          uniform float uTime, uU; uniform sampler2D tDetail, tFoam; uniform vec3 uSandTint, uShallow, uMid, uDeep, uReef, uHaze;
           varying vec3 vSea; varying float vCrest; varying vec3 vT, vB;`)
         .replace('#include <color_fragment>', `#include <color_fragment>
           float seaDist = length(vViewPosition) / uU;          // metres from the eye
           float shoreD = -vSea.z;                               // metres out from the waterline
           // surf: a band that runs up and drains back every ~7 s, broken up by the foam texture
-          float run = 2.0 + 1.6 * sin(uTime * 0.9);
+          // a thin wet lace line that laps up and back
+          float run = 0.9 + 0.7 * sin(uTime * 0.9);
           float foamN = texture2D(tFoam, vSea.xz / 9.0 + vec2(0.0, uTime * 0.05)).r;
-          float surf = (1.0 - smoothstep(run - 1.5, run + 1.0, shoreD)) * smoothstep(0.25, 0.65, foamN + 0.25);
+          float surf = (smoothstep(run - 0.9, run - 0.4, shoreD) - smoothstep(run - 0.2, run + 0.5, shoreD)) * smoothstep(0.2, 0.6, foamN + 0.2) * 0.8;
           float crest = smoothstep(0.88, 1.1, vCrest) * smoothstep(0.35, 0.7, texture2D(tFoam, vSea.xz / 5.0 - uTime * 0.02).r);
-          float foam = clamp(surf + crest * (1.0 - smoothstep(60.0, 220.0, seaDist)), 0.0, 1.0);
-          vec3 water = mix(uShallow, uDeep, smoothstep(1.5, 45.0, shoreD));
-          diffuseColor.rgb = mix(water * 0.25, vec3(0.93), foam); // water's own albedo is low; its colour is mostly the sky`)
+          float foam = clamp(surf + crest * 0.4 * (1.0 - smoothstep(60.0, 220.0, seaDist)), 0.0, 1.0);
+          // clear water: its colour is the light scattered back from the body and the bottom, by depth
+          vec3 water = mix(uSandTint, uShallow, smoothstep(0.0, 14.0, shoreD));
+          water = mix(water, uMid, smoothstep(14.0, 90.0, shoreD));
+          water = mix(water, uDeep, smoothstep(90.0, 320.0, shoreD));
+          float reef = smoothstep(0.42, 0.62, texture2D(tFoam, vSea.xz / 70.0 + 0.3).r * 0.5 + texture2D(tFoam, vSea.xz / 23.0).r * 0.5);
+          water = mix(water, uReef, reef * 0.55 * smoothstep(18.0, 40.0, shoreD) * (1.0 - smoothstep(160.0, 280.0, shoreD)));
+          diffuseColor.rgb = mix(water * 0.45, vec3(0.95), foam); // the sun is ~3.4: more and the shallows go neon`)
         .replace('#include <roughnessmap_fragment>', `#include <roughnessmap_fragment>
-          roughnessFactor = mix(mix(0.07, 0.18, smoothstep(30.0, 1500.0, seaDist)), 0.85, foam); // sharper glints bloomed into squares`)
+          roughnessFactor = mix(mix(0.06, 0.16, smoothstep(30.0, 1500.0, seaDist)), 0.85, foam); // sharper glints bloomed into squares`)
         .replace('#include <normal_fragment_maps>', `
           vec2 q = vSea.xz;
           vec3 n1 = texture2D(tDetail, q / 9.0 + uTime * vec2(0.012, 0.035)).xyz * 2.0 - 1.0;
           vec3 n2 = texture2D(tDetail, q / 31.0 + uTime * vec2(-0.018, 0.014)).xyz * 2.0 - 1.0;
-          vec3 nd = normalize(vec3((n1.xy + n2.xy) * 0.45, n1.z * n2.z));
+          vec3 nd = normalize(vec3((n1.xy + n2.xy) * 0.16, n1.z * n2.z)); // glassy
           nd = normalize(mix(nd, vec3(0.0, 0.0, 1.0), smoothstep(30.0, 350.0, seaDist))); // far ripples alias into radial streaks
           normal = normalize(vT * nd.x + vB * nd.y + normal * nd.z);`)
         .replace('#include <emissivemap_fragment>', `#include <emissivemap_fragment>
-          // light through the crests: turquoise, only where the sun is up
+          // caustic web on the shallow bottom: bright where the two ripple layers focus light; scales with the sun
           #if NUM_DIR_LIGHTS > 0
-            totalEmissiveRadiance += uShallow * 0.06 * clamp(vCrest, 0.0, 1.0) * (1.0 - foam) * dot(directionalLights[ 0 ].color, vec3(0.3333));
+            vec2 cq = vSea.xz;
+            vec2 c1 = texture2D(tDetail, cq / 4.0 + uTime * vec2(0.03, 0.05)).xy - 0.5, c2 = texture2D(tDetail, cq / 6.5 - uTime * vec2(0.04, 0.02)).xy - 0.5;
+            float caust = pow(clamp(1.0 - length(c1 - c2) * 3.2, 0.0, 1.0), 5.0) * (1.0 - smoothstep(3.0, 30.0, shoreD)) * (1.0 - foam);
+            totalEmissiveRadiance += vec3(0.55, 1.0, 0.95) * caust * 0.05 * dot(directionalLights[ 0 ].color, vec3(0.3333));
           #endif`)
         .replace('#include <dithering_fragment>', `#include <dithering_fragment>
           // single-pixel sun glints past the bloom threshold bloomed into squares: keep them just under it
-          gl_FragColor.rgb = min(mix(gl_FragColor.rgb, uHaze, smoothstep(250.0, 3200.0, seaDist) * 0.85), vec3(1.1));`);
+          gl_FragColor.rgb = min(mix(gl_FragColor.rgb, uHaze, smoothstep(900.0, 4000.0, seaDist) * 0.45), vec3(1.1)); // keep the deep-blue band at the horizon`);
     };
     m.customProgramCacheKey = () => `sea${ampScale}`;
     return m;
