@@ -8,6 +8,7 @@ import { Lensflare, LensflareElement } from 'three/addons/objects/Lensflare.js';
 import { createSea } from './Sea.js';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { DRACOLoader } from 'three/addons/loaders/DRACOLoader.js';
+import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 
 const ROAD_LEN = 17.6;
 // The hill: flat where she stands, then the road drops HILL_DROP m to the crossing (a cosine ramp between
@@ -279,13 +280,13 @@ function crossingSignal(g, x, z, face, lamps, arms) {
   for (const [lx, ly] of LENSES) {
     const lens = new THREE.MeshStandardMaterial({ color: '#2a0505', emissive: '#ff1e1e', emissiveIntensity: 0, roughness: 0.2, transparent: true, opacity: 0.85 });
     const lamp = noOutline(new THREE.Mesh(new THREE.CircleGeometry(0.12, 28), lens));
-    lamp.position.set(lx, ly, 0.27);
+    lamp.position.set(lx, ly, 0.27); lamp.userData.noMerge = true;
     s.add(lamp); lamps.push(lens);
     REFS.emitters.push({ obj: lamp, color: new THREE.Color('#ff2a1a'), power: () => lens.emissiveIntensity / 6, range: 22 });
   }
   // barrier housing + arm on a pivot (rotation.z animates 0 = down .. 1.45 = up)
   s.add(shadows(box(0.36, 1.0, 0.32, pbr('#eceee8', { roughness: 0.5 }), 0.42, 0.5, 0.25)));
-  const pivot = new THREE.Group(); pivot.position.set(0.42, 0.92, 0.45);
+  const pivot = new THREE.Group(); pivot.position.set(0.42, 0.92, 0.45); pivot.userData.noMerge = true;
   const arm = shadows(box(3.4, 0.09, 0.09, pbr('#ffffff', { map: stripeTex(16, true), roughness: 0.4 }), 1.75, 0, 0));
   pivot.add(arm, shadows(box(0.5, 0.18, 0.18, black, -0.25, 0, 0))); // counterweight
   s.add(pivot); arms.push(pivot);
@@ -479,7 +480,7 @@ function streetLamp(g, x, z, rotY) {
   const arm = shadows(cyl(0.04, 1.4, metal, 0.6, 5.55, 0, 8)); arm.rotation.z = Math.PI / 2 - 0.25; l.add(arm);
   l.add(shadows(box(0.55, 0.12, 0.25, pbr('#c9ced3', { metalness: 0.5, roughness: 0.4 }), 1.25, 5.62, 0)));
   const bulbMat = new THREE.MeshStandardMaterial({ color: '#ffffff', emissive: '#ffd9a0', emissiveIntensity: 0 });
-  const bulb = box(0.45, 0.03, 0.18, bulbMat, 1.25, 5.55, 0); l.add(bulb);
+  const bulb = box(0.45, 0.03, 0.18, bulbMat, 1.25, 5.55, 0); bulb.userData.noMerge = true; l.add(bulb);
   REFS.emitters.push({ obj: bulb, color: new THREE.Color('#ffcf8a'), power: () => bulbMat.emissiveIntensity / 4, range: 12 });
   const light = new THREE.SpotLight('#ffcf8a', 0, 26, 1.05, 0.55, 1.6);
   light.position.set(1.25, 5.5, 0); light.target.position.set(1.4, 0, 0);
@@ -523,6 +524,38 @@ function train(g, glows) {
 }
 
 // ---------------------------------------------------------------------------------------------------
+// Static props are hundreds of small boxes and cylinders, each drawn in the scene, shadow and AO passes. Bake
+// everything that never moves into one mesh per material (same look, far fewer draws). Kept apart: anything
+// flagged noMerge (animated, or an emitter whose position is read every frame) and the meshes other code holds
+// on to (road/ground swapped by weather, walkable surfaces for clicks, the old grass cards).
+function mergeStatic(g) {
+  const keep = new Set([REFS.road, REFS.ground, REFS.tufts, ...REFS.walkable]);
+  const bins = new Map();
+  g.updateMatrixWorld(true);
+  const inv = new THREE.Matrix4().copy(g.matrixWorld).invert();
+  const visit = (o) => {
+    if (o.userData.noMerge || keep.has(o)) return;
+    if (o.isMesh && !o.isInstancedMesh && !Array.isArray(o.material) && !o.material.transparent && o.visible) {
+      const geo = o.geometry, attrs = Object.keys(geo.attributes).sort().join();
+      const key = `${o.material.uuid}|${attrs}|${!!geo.index}|${o.castShadow}|${o.receiveShadow}`;
+      if (!bins.has(key)) bins.set(key, []);
+      bins.get(key).push(o);
+    }
+    o.children.forEach(visit);
+  };
+  g.children.forEach(visit);
+  const m = new THREE.Matrix4();
+  for (const list of bins.values()) {
+    if (list.length < 2) continue;
+    const merged = mergeGeometries(list.map((o) => o.geometry.clone().applyMatrix4(m.multiplyMatrices(inv, o.matrixWorld))));
+    if (!merged) continue;
+    const mesh = new THREE.Mesh(merged, list[0].material);
+    mesh.castShadow = list[0].castShadow; mesh.receiveShadow = list[0].receiveShadow; mesh.userData.draped = true;
+    for (const o of list) o.removeFromParent();
+    g.add(mesh);
+  }
+}
+
 export function createCrossing(renderer) {
   const g = new THREE.Group(); g.name = 'crossing';
   ground(g); railway(g);
@@ -544,8 +577,10 @@ export function createCrossing(renderer) {
     }
   }
   const tr = train(g, glows);
+  tr.userData.noMerge = true;
   settle(g);
   buildVending(g);
+  mergeStatic(g);
   // Blue Archive look: ink outlines on the character only, never on the background
   g.traverse((o) => { if (o.material) noOutline(o); });
 

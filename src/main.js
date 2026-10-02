@@ -17,7 +17,8 @@ import { Character, BUILTIN_MOTIONS, IDLE_POSE, DEFAULT_MODEL } from './characte
 
 const $=s=>document.querySelector(s),canvas=$('#scene'),video=$('#camera'),status=$('#status'),debugPanel=$('#debugPanel'),calPanel=$('#calibration'),motionSel=$('#motion'),modelSel=$('#modelSel');
 const calibration=new Calibration();
-const renderer=new THREE.WebGLRenderer({canvas,antialias:true});renderer.setPixelRatio(Math.min(devicePixelRatio,2));renderer.shadowMap.enabled=true;renderer.shadowMap.type=THREE.PCFSoftShadowMap;
+// antialias off: the post chain antialiases (4x MSAA target + SMAA); the canvas only gets a fullscreen quad
+const renderer=new THREE.WebGLRenderer({canvas,antialias:false});renderer.setPixelRatio(Math.min(devicePixelRatio,2));renderer.shadowMap.enabled=true;renderer.shadowMap.type=THREE.PCFSoftShadowMap;
 renderer.toneMapping=THREE.NeutralToneMapping;renderer.toneMappingExposure=1; // applied by the post chain's OutputPass
 const scene=new THREE.Scene();scene.background=new THREE.Color(0x03050a);
 const camera=new THREE.PerspectiveCamera(45,1,.01,30000),spatial=new OffAxisCamera(camera,{far:30000});

@@ -72,6 +72,7 @@ function gpuProfiler(renderer, composer) {
 }
 
 export function createPost(renderer, scene, camera, outline) {
+  renderer.shadowMap.autoUpdate = false;
   const composer = new EffectComposer(renderer, new THREE.WebGLRenderTarget(1, 1, { type: THREE.HalfFloatType, samples: 4 }));
   const render = new OutlineRenderPass(outline, scene, camera);
   const ao = new GTAOPass(scene, camera, 1, 1);
@@ -98,7 +99,9 @@ export function createPost(renderer, scene, camera, outline) {
       ao.setSize((w * ratio) / 2, (h * ratio) / 2); // AO is low-frequency: half res is ~4x cheaper and looks the same
     },
     setScale(U) { ao.updateGtaoMaterial({ radius: 0.25 * U }); }, // ~25 cm of the character world
-    render() { composer.render(); perf?.frame(); },
+    // the outline and AO passes each render the scene again; with autoUpdate the sun's shadow map was redrawn
+    // for every one of them, so draw it once per frame here instead
+    render() { renderer.shadowMap.needsUpdate = true; composer.render(); perf?.frame(); },
     grade(g) {
       const u = grade.uniforms;
       u.tint.value.fromArray(g?.tint ?? [1, 1, 1]); u.sat.value = g?.sat ?? 1; u.contrast.value = g?.contrast ?? 1;
