@@ -51,7 +51,7 @@ const TRACK_Z = -11, CYCLE = 42, TRAIN_SPEED = 17; // m, s, m/s
 const SUN_DIR = new THREE.Vector3(-0.45, 0.62, 0.64).normalize(); // high, front-left: lights the face
 
 // Handles the weather system restyles (filled while building)
-export const REFS = { walls: [], roofs: [], leaves: [], windows: [], nightLights: [], redLights: [], lowTrees: [], emitters: [], vending: [], neonSigns: [], neonHaze: null, roadSpan: null, sea: null, sand: null, walkable: [] };
+export const REFS = { walls: [], roofs: [], leaves: [], windows: [], nightLights: [], redLights: [], lowTrees: [], emitters: [], vending: [], neonSigns: [], roadSpan: null, sea: null, sand: null, walkable: [] };
 // emitters: things that glow onto the character in real time (GI.js). { obj, color, power() 0..1, range in m,
 // facing?: emits only out of obj's +z (a lit panel) }
 const mats = new Map();
@@ -428,21 +428,12 @@ function vendingMachine(g, x, z, rotY, style, { bins = true } = {}) {
 }
 
 // A row of colourful machines on the left verge behind her: the neon night's light source. Their glow reaches
-// her as rim/fill (REFS.emitters); one shared point light tints the road, and soft additive sprites fake the
-// coloured haze rising off the ground (shown only by the neon preset).
+// her as rim/fill (REFS.emitters); one shared point light tints the road.
 function vendingCorner(g) {
   const styles = [VM_STYLES.sakura, VM_STYLES.aqua, VM_STYLES.night, VM_STYLES.matcha];
   styles.forEach((st, i) => vendingMachine(g, -4.35, -1.6 - i * 1.12, Math.PI / 2 - 0.12, st, { bins: false }));
   const spill = new THREE.PointLight('#ff5ad6', 0, 7, 2); spill.position.set(-3.2, 1.2, -3.3); g.add(spill);
-  REFS.nightLights.push({ light: spill, power: 2.5 });
-  const haze = new THREE.Group(); haze.visible = false;
-  const tex = canvasTex(128, 128, (c, w) => { const gr = c.createRadialGradient(w / 2, w / 2, 0, w / 2, w / 2, w / 2); gr.addColorStop(0, 'rgba(255,255,255,0.55)'); gr.addColorStop(1, 'rgba(255,255,255,0)'); c.fillStyle = gr; c.fillRect(0, 0, w, w); });
-  styles.forEach((st, i) => {
-    const m = new THREE.SpriteMaterial({ map: tex, color: st.glow, transparent: true, opacity: 0.35, depthWrite: false, blending: THREE.AdditiveBlending, fog: false });
-    m.userData.outlineParameters = { visible: false };
-    const sp = new THREE.Sprite(m); sp.position.set(-3.6, 0.5, -1.6 - i * 1.12); sp.scale.set(3.2, 1.6, 1); haze.add(sp);
-  });
-  haze.userData.settleChildren = true; g.add(haze); REFS.neonHaze = haze;
+  REFS.nightLights.push({ light: spill, power: 1.2 });
 }
 
 // Snack-bar A-frame on the verge behind her: pink neon script, low to the ground, so in the neon preset it

@@ -37,9 +37,9 @@ export const WEATHERS = {
     char: { amb: ['#7d8cbc', 0.4], key: ['#ffd2a0', 0.95] }, grade: { tint: [0.9, 0.95, 1.1], sat: 0.95, contrast: 1.1, sepia: 0, vignette: 0.5 }, bloom: 0.55, night: 1, flare: false,
   },
   // よふかしのうた-style night: violet shadows everywhere, magenta/cyan glow off the vending corner rimming her from
-  // behind, coloured windows, pink haze on the ground, whole frame graded toward purple
+  // behind, coloured windows, whole frame graded toward purple
   neon: {
-    label: '네온 밤', hdri: 'night', skyTame: [0.4, 2.5], az: 120, minElev: 25, env: 0.35, bg: 0.6, exposure: 1.25, sun: ['#b39dff', 0.3], fog: ['#2a1645', 15, 200],
+    label: '네온 밤', hdri: 'night', skyTame: [0.4, 2.5], az: 120, minElev: 25, env: 0.35, bg: 0.45, exposure: 1.0, sun: ['#b39dff', 0.3], fog: ['#2a1645', 15, 200],
     char: { amb: ['#8c6ad8', 0.7], key: ['#eadcff', 1.3] }, grade: { tint: [1.04, 0.86, 1.22], sat: 1.15, contrast: 1.04, sepia: 0, vignette: 0.4 }, bloom: 0.6, bloomThreshold: 1.6, night: 1, neon: 1, flare: false,
   },
 };
@@ -234,7 +234,6 @@ export function createWeather({ renderer, scene, crossing, post, ambient, key })
         crossing.flareHolder.visible = true; crossing.redPower = 0;
         for (const m of REFS.vending) m.emissiveIntensity = 0.55;
         for (const m of REFS.windows) m.emissiveIntensity = 0;
-        if (REFS.neonHaze) REFS.neonHaze.visible = false;
         for (const m of REFS.neonSigns) m.emissiveIntensity = 0;
         for (const n of REFS.nightLights) { n.light.intensity = 0; if (n.mat) n.mat.emissiveIntensity = 0; }
         if (reflector) reflector.visible = false; REFS.road.visible = true; if (snow) snow.visible = false; showPlants(true);
@@ -283,10 +282,9 @@ export function createWeather({ renderer, scene, crossing, post, ambient, key })
         if (n.mat) n.mat.emissiveIntensity = night ? 4 : 0;
       }
       for (const r of REFS.redLights) r.distance = (r.userData.d ??= r.distance) * U;
-      crossing.redPower = (night ? 40 : name === 'rain' || name === 'sunset' ? 12 : 0) * U ** 1.6;
+      crossing.redPower = (w.neon ? 16 : night ? 40 : name === 'rain' || name === 'sunset' ? 12 : 0) * U ** 1.6;
       for (const m of REFS.windows) { m.emissiveIntensity = night ? 1.6 : name === 'sunset' ? 0.25 : 0; m.emissive.set(w.neon ? m.userData.neon : '#ffcf8a'); }
-      for (const m of REFS.vending) m.emissiveIntensity = w.neon ? 1.0 : night ? 0.6 : w === WEATHERS.sunset ? 0.7 : 0.55;
-      if (REFS.neonHaze) REFS.neonHaze.visible = !!w.neon;
+      for (const m of REFS.vending) m.emissiveIntensity = w.neon ? 0.55 : night ? 0.6 : w === WEATHERS.sunset ? 0.7 : 0.55;
       for (const m of REFS.neonSigns) m.emissiveIntensity = w.neon ? 2.2 : night ? 1.2 : 0;
       return current;
     },
