@@ -21,13 +21,15 @@ export const WEATHERS = {
     label: '노을', hdri: 'sunset', az: 228, minElev: 6, env: 0.8, bg: 0.6, exposure: 0.85, sun: ['#ffa458', 3.0], fog: ['#d9946c', 60, 380],
     char: { amb: ['#d9a98c', 0.85], key: ['#ffc58c', 0.8] }, grade: { tint: [1.05, 0.98, 0.9], sat: 1.0, contrast: 1.1, sepia: 0.11, vignette: 0.38 }, bloom: 0.12, bloomThreshold: 1.8, flare: false, // the low sun is already in the photo; flare + bloom smeared it
   },
+  // overcast presets: the photo sky and fog carry the grey mood; the grade and her lights stay near neutral so
+  // she keeps her own colours instead of turning into a grey untextured-looking model
   rain: {
     label: '비 온 뒤', hdri: 'rain', az: 300, env: 1.15, bg: 1, exposure: 0.95, sun: ['#e4ecf4', 0.6], fog: ['#b4bfc8', 22, 230],
-    char: { amb: ['#b9c5ce', 1.0], key: ['#e8f0ff', 0.9] }, grade: { tint: [0.96, 1, 1.03], sat: 0.84, contrast: 1.08, sepia: 0, vignette: 0.32 }, bloom: 0.35, wet: 1, flare: false,
+    char: { amb: ['#c4c7cc', 1.0], key: ['#f4f6fa', 0.9] }, grade: { tint: [0.98, 1, 1.02], sat: 0.96, contrast: 1.08, sepia: 0, vignette: 0.32 }, bloom: 0.35, wet: 1, flare: false,
   },
   snow: {
     label: '눈', hdri: 'snow', az: 300, env: 1.2, bg: 1, exposure: 1, sun: ['#f1f5ff', 0.8], fog: ['#e6edf4', 16, 170],
-    char: { amb: ['#c9d5e3', 1.05], key: ['#f4f8ff', 0.9] }, grade: { tint: [0.95, 0.99, 1.06], sat: 0.86, contrast: 1.02, sepia: 0, vignette: 0.26 }, bloom: 0.35, snow: 1, flare: false,
+    char: { amb: ['#cdd2d8', 1.05], key: ['#fafbff', 0.9] }, grade: { tint: [0.97, 0.99, 1.04], sat: 0.96, contrast: 1.02, sepia: 0, vignette: 0.26 }, bloom: 0.35, snow: 1, flare: false,
   },
   night: {
     label: '밤', hdri: 'night', az: 120, minElev: 25, env: 0.35, bg: 0.75, exposure: 1.25, sun: ['#9fb3ff', 0.35], fog: ['#141c2e', 20, 260],
