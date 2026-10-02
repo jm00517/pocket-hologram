@@ -51,7 +51,10 @@ export function createGI(renderer) {
               float wrap = clamp( ( dot( geometryNormal, L ) + 0.4 ) / 1.4, 0.0, 1.0 );
               irradiance += uEmCol[ i ] * fall * wrap;
               // light from behind her (the crossing lamps) shows as a coloured rim on the silhouette, anime style
-              float rim = pow( 1.0 - saturate( dot( geometryNormal, geometryViewDir ) ), 3.0 ) * saturate( dot( L, - geometryViewDir ) );
+              // only the edge on the light's side: its direction projected onto the screen plane picks left/right
+              vec3 Ls = L - geometryViewDir * dot( L, geometryViewDir );
+              float side = saturate( dot( geometryNormal, Ls / max( length( Ls ), 1e-4 ) ) );
+              float rim = pow( 1.0 - saturate( dot( geometryNormal, geometryViewDir ) ), 3.0 ) * saturate( dot( L, - geometryViewDir ) ) * mix( 0.1, 1.0, side );
               reflectedLight.directSpecular += uEmCol[ i ] * fall * rim * 0.5;
             }
             IncidentLight keyLight;
