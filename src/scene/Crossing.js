@@ -10,7 +10,7 @@ const TRACK_Z = -11, CYCLE = 42, TRAIN_SPEED = 17; // m, s, m/s
 const SUN_DIR = new THREE.Vector3(-0.45, 0.62, 0.64).normalize(); // high, front-left: lights the face
 
 // Handles the weather system restyles (filled while building)
-export const REFS = { walls: [], roofs: [], leaves: [], windows: [], nightLights: [], redLights: [], lowTrees: [] };
+export const REFS = { walls: [], roofs: [], leaves: [], windows: [], nightLights: [], redLights: [], lowTrees: [], hills: [] };
 const mats = new Map();
 function pbr(color, o = {}) {
   const key = color + JSON.stringify(o, (k, v) => (v?.isTexture ? v.uuid : v));
@@ -262,28 +262,100 @@ function utilityPoles(g) {
   g.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(new THREE.QuadraticBezierCurve3(a, a.clone().lerp(b, 0.5).add(new THREE.Vector3(0, -1.2, 0)), b).getPoints(24)), wire));
 }
 
+// Japanese drink machine: lit sample showcase behind glass (only the showcase glows), price tags and
+// push-button LEDs, then an unlit door with coin/bill slots, a tiny LCD and the take-out pocket.
 function vendingMachine(g, x, z, rotY, glows) {
-  const panel = canvasTex(256, 460, (c, w, h) => {
-    c.fillStyle = '#f7fbff'; c.fillRect(0, 0, w, h);
-    c.fillStyle = '#1565c0'; c.fillRect(0, 0, w, 60);
-    c.fillStyle = '#ffffff'; c.font = 'bold 34px "Yu Gothic",sans-serif'; c.textAlign = 'center'; c.fillText('つめた〜い', w / 2, 42);
-    const cols = ['#e53935', '#43a047', '#fdd835', '#1e88e5', '#8e24aa', '#fb8c00', '#00acc1', '#6d4c41'];
-    for (let r = 0; r < 3; r++) for (let i = 0; i < 6; i++) {
-      const cx = 22 + i * 42, cy = 90 + r * 95;
-      c.fillStyle = cols[(r * 3 + i) % cols.length]; c.fillRect(cx - 12, cy, 24, 52);
-      c.fillStyle = '#e0e0e0'; c.fillRect(cx - 12, cy, 24, 8);
-      c.fillStyle = r === 2 && i > 3 ? '#e53935' : '#1e88e5'; c.fillRect(cx - 13, cy + 60, 26, 9);
+  const drinks = [ // [label, cap/lid, bottle?]
+    ['#e53935', '#c9ccd0'], ['#2e7d32', '#ffffff', 1], ['#f9a825', '#c9ccd0'], ['#1565c0', '#1565c0', 1], ['#6d4c41', '#c9ccd0'],
+    ['#ffffff', '#43a047', 1], ['#212121', '#c9ccd0'], ['#00838f', '#ffffff', 1], ['#fb8c00', '#c9ccd0'], ['#8e24aa', '#c9ccd0'],
+  ];
+  // e = emissive pass: the backlight glows, product fronts only catch a little of it
+  const showcase = (e) => (c, w, h) => {
+    c.fillStyle = e ? '#d8e6f2' : '#eef4f8'; c.fillRect(0, 0, w, h);
+    const rows = 3, cols = 8, rowH = h / rows;
+    for (let r = 0; r < rows; r++) {
+      const y0 = r * rowH, hot = r === rows - 1;
+      // light falls off away from the tube at the top of each shelf
+      const gr = c.createLinearGradient(0, y0, 0, y0 + rowH);
+      gr.addColorStop(0, 'rgba(255,255,255,0.8)'); gr.addColorStop(1, 'rgba(140,160,180,0.4)');
+      c.fillStyle = gr; c.fillRect(0, y0, w, rowH);
+      for (let i = 0; i < cols; i++) {
+        const [lab, lid, bottle] = drinks[(r * 3 + i * 7) % drinks.length], cx = (i + 0.5) * (w / cols), base = y0 + rowH * 0.68;
+        const bw = bottle ? 30 : 38, bh = bottle ? 112 : 84, top = base - bh;
+        if (bottle) { // PET: clear neck, cap, label band
+          c.fillStyle = '#cfe3ee'; c.fillRect(cx - bw / 2, top + 22, bw, bh - 22); c.fillRect(cx - 7, top + 6, 14, 18);
+          c.fillStyle = lid; c.fillRect(cx - 8, top, 16, 9);
+          c.fillStyle = lab; c.fillRect(cx - bw / 2, top + 48, bw, 40);
+        } else { // can: silver lid, full-wrap print
+          c.fillStyle = lab; c.fillRect(cx - bw / 2, top + 8, bw, bh - 8);
+          c.fillStyle = lid; c.fillRect(cx - bw / 2 + 2, top, bw - 4, 9);
+          c.fillStyle = 'rgba(255,255,255,0.75)'; c.fillRect(cx - bw / 2 + 6, top + 26, bw - 12, 14);
+        }
+        c.fillStyle = 'rgba(255,255,255,0.35)'; c.fillRect(cx - bw / 2 + 4, top + 10, 4, bh - 14); // cylinder highlight
+        if (e) { // samples block the backlight: only a rim of their colour glows
+          c.fillStyle = 'rgba(0,0,0,0.82)';
+          if (bottle) { c.fillRect(cx - bw / 2, top + 22, bw, bh - 22); c.fillRect(cx - 7, top + 6, 14, 18); } else c.fillRect(cx - bw / 2, top, bw, bh);
+        }
+        // price tag + push button (blue = cold, red = hot, a couple sold out)
+        const ty = base + 10, sold = (r * 5 + i) % 11 === 3;
+        c.fillStyle = e ? '#000' : '#ffffff'; c.fillRect(cx - 24, ty, 48, 20);
+        c.fillStyle = e ? '#000' : '#222'; c.font = 'bold 17px sans-serif'; c.textAlign = 'center'; c.fillText(bottle ? '160' : '130', cx, ty + 17);
+        c.fillStyle = sold ? '#ff2a2a' : hot ? '#ff4a2a' : '#2a90ff';
+        c.fillRect(cx - 18, ty + 26, 36, 10);
+        if (sold) { c.font = 'bold 12px sans-serif'; c.fillText('売切', cx, ty + 52); }
+      }
+      c.fillStyle = e ? '#000' : '#5b6670'; c.fillRect(0, y0 + rowH - 6, w, 6); // shelf lip
+      if (r === 0 || hot) {
+        c.fillStyle = e ? '#000' : hot ? '#d32f2f' : '#1565c0'; c.fillRect(0, y0, 96, 20);
+        c.fillStyle = e ? '#000' : '#fff'; c.font = 'bold 14px sans-serif'; c.textAlign = 'left'; c.fillText(hot ? 'あたたか〜い' : 'つめた〜い', 5, y0 + 15);
+      }
     }
-    c.fillStyle = '#263238'; c.fillRect(30, 390, w - 60, 46);
-  });
+  };
+  const SW = 512, SH = 600, caseMap = canvasTex(SW, SH, showcase(false)), caseGlow = canvasTex(SW, SH, showcase(true));
+  // door face: blue upper frame, white lower door with slots; only the LCD glows
+  const doorDraw = (e) => (c, w, h) => {
+    c.fillStyle = e ? '#000' : '#1e5bb8'; c.fillRect(0, 0, w, h);
+    if (!e) {
+      c.fillStyle = '#f4f7fa'; c.fillRect(0, h * 0.6, w, h * 0.4);
+      c.fillStyle = '#1e5bb8'; c.fillRect(0, h * 0.6, w, 8);
+      c.font = 'italic bold 22px sans-serif'; c.textAlign = 'center'; c.fillText('COOL DRINK', w * 0.34, h * 0.68);
+      c.fillStyle = '#9aa3ab'; c.fillRect(w * 0.74, h * 0.635, 40, 60); // coin plate
+      c.fillStyle = '#20252a'; c.fillRect(w * 0.74 + 17, h * 0.635 + 8, 6, 20); c.fillRect(w * 0.74 + 8, h * 0.635 + 38, 24, 12);
+      c.fillStyle = '#2b3036'; c.fillRect(w * 0.74, h * 0.715, 40, 24); // bill acceptor
+      c.fillStyle = '#9aa3ab'; c.fillRect(w * 0.74 + 4, h * 0.715 + 10, 32, 4);
+      c.fillStyle = '#5c6670'; c.font = '12px sans-serif'; c.fillText('10 50 100 500 1000', w * 0.34, h * 0.72);
+    }
+    c.fillStyle = e ? '#3cff7a' : '#0c1a10'; c.fillRect(w * 0.74, h * 0.612, 40, 13); // LCD above the coin slot
+    if (e) { c.fillStyle = '#000'; c.font = 'bold 12px monospace'; c.textAlign = 'center'; c.fillText('0', w * 0.74 + 33, h * 0.612 + 11); }
+  };
+  const doorMap = canvasTex(256, 456, doorDraw(false)), doorGlow = canvasTex(256, 456, doorDraw(true));
+
   const vm = new THREE.Group(); vm.position.set(x, 0, z); vm.rotation.y = rotY;
-  vm.add(shadows(box(1.05, 1.85, 0.75, pbr('#eef1f4', { roughness: 0.35, metalness: 0.15 }), 0, 0.925, 0)));
-  const faceMat = new THREE.MeshPhysicalMaterial({ map: panel, emissive: '#ffffff', emissiveMap: panel, emissiveIntensity: 0.9, roughness: 0.1, clearcoat: 1, clearcoatRoughness: 0.05 });
-  const face = noOutline(new THREE.Mesh(new THREE.PlaneGeometry(0.9, 1.6), faceMat));
-  face.position.set(0, 0.98, 0.38); vm.add(face); glows.push(faceMat);
-  vm.add(shadows(box(1.0, 0.08, 0.6, pbr('#d6dade', { roughness: 0.4 }), 0, 1.9, 0)));
-  const bin = shadows(cyl(0.2, 0.7, pbr('#2c7be5', { roughness: 0.35 }), 0.75, 0.35, 0.15, 16));
-  vm.add(bin);
+  const body = pbr('#e9edf0', { roughness: 0.35, metalness: 0.2 });
+  vm.add(shadows(box(1.05, 1.83, 0.72, body, 0, 0.915, -0.02)));
+  const door = new THREE.MeshStandardMaterial({ map: doorMap, emissive: '#ffffff', emissiveMap: doorGlow, emissiveIntensity: 0.8, roughness: 0.3, metalness: 0.1 });
+  vm.add(box(1.0, 1.78, 0.04, [body, body, body, body, door, body], 0, 0.92, 0.36));
+  // showcase: lit samples, framed and set back behind glass
+  const sh = 0.86 * SH / SW, cy = 1.32;
+  const caseMat = new THREE.MeshStandardMaterial({ map: caseMap, emissive: '#ffffff', emissiveMap: caseGlow, emissiveIntensity: 0.55, roughness: 0.7 });
+  const sc = new THREE.Mesh(new THREE.PlaneGeometry(0.86, sh), caseMat);
+  sc.position.set(0, cy, 0.385); vm.add(sc); glows.push(caseMat);
+  const frame = pbr('#c3cad1', { roughness: 0.3, metalness: 0.6 });
+  for (const [w, h, fx, fy] of [[0.94, 0.04, 0, cy + sh / 2 + 0.02], [0.94, 0.04, 0, cy - sh / 2 - 0.02], [0.04, sh, -0.45, cy], [0.04, sh, 0.45, cy]]) vm.add(box(w, h, 0.05, frame, fx, fy, 0.405));
+  const glass = new THREE.MeshStandardMaterial({ color: '#ffffff', transparent: true, opacity: 0.08, roughness: 0.02, metalness: 1, depthWrite: false });
+  const gl = new THREE.Mesh(new THREE.PlaneGeometry(0.86, sh), glass); gl.position.set(0, cy, 0.425); vm.add(gl);
+  // take-out pocket with smoked flap, change cup
+  vm.add(box(0.62, 0.2, 0.06, pbr('#15181b', { roughness: 0.6 }), -0.08, 0.26, 0.37));
+  vm.add(box(0.6, 0.17, 0.01, new THREE.MeshStandardMaterial({ color: '#2a2f35', transparent: true, opacity: 0.85, roughness: 0.15, metalness: 0.3 }), -0.08, 0.27, 0.405));
+  vm.add(box(0.12, 0.08, 0.04, pbr('#9aa3ab', { metalness: 0.7, roughness: 0.3 }), 0.36, 0.2, 0.39));
+  vm.add(shadows(box(1.08, 0.1, 0.78, pbr('#d6dade', { roughness: 0.4 }), 0, 1.88, -0.02))); // top cap
+  vm.add(shadows(box(1.0, 0.06, 0.66, pbr('#3a3f45', { roughness: 0.8 }), 0, 0.03, 0))); // plinth
+  // recycle boxes: cans / PET
+  for (const [bx, col, lab] of [[0.72, '#2c7be5', 'あきかん'], [1.05, '#2e9e5b', 'ペットボトル']]) {
+    const t = canvasTex(128, 128, (c, w) => { c.fillStyle = col; c.fillRect(0, 0, w, w); c.fillStyle = '#111'; c.beginPath(); c.arc(w / 2, 34, 18, 0, 7); c.fill(); c.fillStyle = '#fff'; c.font = `bold ${lab.length > 4 ? 14 : 22}px sans-serif`; c.textAlign = 'center'; c.fillText(lab, w / 2, 96); });
+    const side = pbr(col, { roughness: 0.35 });
+    vm.add(shadows(box(0.3, 0.72, 0.3, [side, side, side, side, pbr('#ffffff', { map: t, roughness: 0.35 }), side], bx, 0.36, 0.15)));
+  }
   g.add(vm);
 }
 
@@ -298,21 +370,6 @@ function curveMirror(g, x, z, rotY) {
   m.add(dome);
   m.add(box(0.95, 0.04, 0.1, orange, 0, 2.75, 0));
   g.add(m);
-}
-
-function busStop(g, x, z) {
-  const sign = canvasTex(256, 256, (c, w) => {
-    c.fillStyle = '#ffffff'; c.beginPath(); c.arc(w / 2, w / 2, w / 2 - 4, 0, 7); c.fill();
-    c.strokeStyle = '#d32f2f'; c.lineWidth = 18; c.stroke();
-    c.fillStyle = '#1a237e'; c.font = 'bold 54px "Yu Gothic",sans-serif'; c.textAlign = 'center'; c.fillText('バス停', w / 2, w / 2 - 6);
-    c.font = 'bold 30px "Yu Gothic",sans-serif'; c.fillText('踏切前', w / 2, w / 2 + 40);
-  });
-  const s = new THREE.Group(); s.position.set(x, 0, z);
-  s.add(shadows(cyl(0.035, 2.2, pbr('#c8ccd0', { metalness: 0.8, roughness: 0.35 }), 0, 1.1, 0)));
-  const d = noOutline(new THREE.Mesh(new THREE.CircleGeometry(0.3, 32), pbr('#ffffff', { map: sign, roughness: 0.35, side: THREE.DoubleSide })));
-  d.position.set(0, 2.2, 0); d.rotation.y = 0.35; s.add(d);
-  s.add(shadows(box(0.6, 0.5, 0.35, pbr('#4b5a66', { roughness: 0.4 }), 0, 0.25, 0))); // weighted base
-  g.add(s);
 }
 
 function guardrails(g) {
@@ -367,7 +424,7 @@ function townscape(g) {
   const hill = pbr('#86c39a', { roughness: 1 });
   for (const [x, z, r] of [[-150, -260, 90], [-20, -300, 120], [140, -270, 100], [260, -230, 80]]) {
     const h = new THREE.Mesh(new THREE.SphereGeometry(r, 32, 12, 0, Math.PI * 2, 0, Math.PI / 2), hill);
-    h.scale.y = 0.35; h.position.set(x, -2, z); g.add(h);
+    h.scale.y = 0.35; h.position.set(x, -2, z); g.add(h); REFS.hills.push(h);
   }
 }
 
@@ -431,13 +488,12 @@ export function createCrossing(renderer) {
   utilityPoles(g); guardrails(g);
   vendingMachine(g, 4.0, -3.0, -Math.PI / 2 + 0.25, glows);
   curveMirror(g, 3.6, -7.6, -0.6);
-  busStop(g, -3.4, -4.6);
   townscape(g);
   streetLamp(g, -3.9, -15.5, 0);
   streetLamp(g, 3.9, -0.6, Math.PI);
   { // vending machine spill + red spill from the flashing signals
-    const vm = new THREE.PointLight('#d8ecff', 0, 7, 1.8); vm.position.set(3.5, 1.1, -2.8); g.add(vm);
-    REFS.nightLights.push({ light: vm, power: 6 });
+    const vm = new THREE.PointLight('#d8ecff', 0, 6, 2); vm.position.set(2.7, 1.2, -2.7); g.add(vm); // 1.3 m out from the face: spill on the road, not a hot spot on the machine
+    REFS.nightLights.push({ light: vm, power: 1.5 });
     for (const [x, z] of [[-3.5, TRACK_Z + 2.4], [3.5, TRACK_Z - 2.4]]) {
       const r = new THREE.PointLight('#ff2a1a', 0, 9, 1.6); r.position.set(x, 2.4, z); g.add(r); REFS.redLights.push(r);
     }

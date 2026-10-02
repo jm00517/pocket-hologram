@@ -19,7 +19,7 @@ export const WEATHERS = {
   },
   sunset: {
     label: '노을', hdri: 'sunset', az: 228, minElev: 6, env: 0.8, bg: 0.6, exposure: 0.85, sun: ['#ffa458', 3.0], fog: ['#d9946c', 60, 380],
-    char: { amb: ['#d9a98c', 0.85], key: ['#ffc58c', 0.8] }, grade: { tint: [1.05, 0.98, 0.9], sat: 1.0, contrast: 1.1, sepia: 0.11, vignette: 0.38 }, bloom: 0.3, flare: true,
+    char: { amb: ['#d9a98c', 0.85], key: ['#ffc58c', 0.8] }, grade: { tint: [1.05, 0.98, 0.9], sat: 1.0, contrast: 1.1, sepia: 0.11, vignette: 0.38 }, bloom: 0.12, bloomThreshold: 1.8, flare: false, // the low sun is already in the photo; flare + bloom smeared it
   },
   rain: {
     label: '비 온 뒤', hdri: 'rain', az: 300, env: 1.15, bg: 1, exposure: 0.95, sun: ['#e4ecf4', 0.6], fog: ['#b4bfc8', 22, 230],
@@ -103,18 +103,39 @@ function wetRoad() {
         color: { value: new THREE.Color(1, 1, 1) }, tDiffuse: { value: null }, textureMatrix: { value: null },
         tMap: { value: REFS.road.material.map }, tMask: { value: mask }, ambient: { value: new THREE.Color(0.55, 0.58, 0.62) },
         repeat: { value: new THREE.Vector2(2, 60) },
+        uTime: { value: 0 },
       },
       vertexShader: /* glsl */`
         uniform mat4 textureMatrix; varying vec4 vUvR; varying vec2 vUv; varying vec3 vWorld;
         void main() { vUv = uv; vUvR = textureMatrix * vec4(position, 1.0); vec4 w = modelMatrix * vec4(position, 1.0); vWorld = w.xyz; gl_Position = projectionMatrix * viewMatrix * w; }`,
       fragmentShader: /* glsl */`
-        uniform sampler2D tDiffuse, tMap, tMask; uniform vec3 ambient; uniform vec2 repeat;
+        uniform sampler2D tDiffuse, tMap, tMask; uniform vec3 ambient; uniform vec2 repeat; uniform float uTime;
         varying vec4 vUvR; varying vec2 vUv; varying vec3 vWorld;
+        float hash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
+        // expanding rings from drips off wires and leaves; sparse, each cell has its own rhythm
+        vec2 drips(vec2 p) {
+          vec2 n = vec2(0.0);
+          for (int i = -1; i <= 1; i++) for (int j = -1; j <= 1; j++) {
+            vec2 cell = floor(p) + vec2(i, j);
+            float h = hash(cell);
+            if (h > 0.35) continue;
+            vec2 c = cell + vec2(hash(cell + 3.1), hash(cell + 7.7));
+            float ph = fract(uTime * (0.25 + h) + h * 17.0);
+            vec2 d = p - c; float r = length(d), R = ph * 0.9;
+            float wave = sin((r - R) * 40.0) * smoothstep(0.12, 0.0, abs(r - R)) * (1.0 - ph) * (1.0 - ph);
+            n += d / (r + 1e-4) * wave;
+          }
+          return n;
+        }
         void main() {
           vec3 base = texture2D(tMap, vUv * repeat).rgb;
           vec4 m = texture2D(tMask, vUv * vec2(1.0, 28.0));
           float puddle = smoothstep(0.35, 0.75, m.r);
+          vec2 pm = vUv * vec2(6.0, 180.0); // meters on the road
+          vec2 wind = vec2(sin(pm.y * 3.1 + uTime * 1.7) + sin(pm.x * 4.3 - uTime * 1.3), cos(pm.x * 2.7 + pm.y * 1.9 + uTime * 2.1)) * 0.25;
+          vec2 rip = drips(pm * 1.4) + wind;
           vec4 uvr = vUvR; uvr.xy += (m.gb - 0.5) * 0.012 * (1.0 - puddle) * uvr.w; // rough film blurs, puddles stay sharp
+          uvr.xy += rip * 0.006 * puddle * uvr.w;
           vec3 refl = texture2DProj(tDiffuse, uvr).rgb;
           vec3 V = normalize(cameraPosition - vWorld);
           float fres = 0.05 + 0.95 * pow(1.0 - max(V.y, 0.0), 5.0);
@@ -162,13 +183,14 @@ export function createWeather({ renderer, scene, crossing, post, ambient, key })
   const restoreDry = () => {
     for (const m of [REFS.road.material, REFS.ground.material, REFS.ballast.material, ...REFS.roofs, ...REFS.leaves]) {
       const d = m.userData.dry; if (!d) continue;
-      Object.assign(m, { map: d.map, normalMap: d.normalMap, roughnessMap: d.roughnessMap, roughness: d.roughness }); m.color.copy(d.color); m.needsUpdate = true;
+      for (const k of ['map', 'normalMap', 'roughnessMap', 'roughness']) if (k in d) m[k] = d[k]; // only what was saved: sprites keep their map
+      m.color.copy(d.color); m.needsUpdate = true;
     }
   };
   return {
     list: () => Object.entries(WEATHERS).map(([k, v]) => [k, v.label]),
     get current() { return current; },
-    tick(t, dt) { snow?.visible && snow.userData.tick(t, dt); },
+    tick(t, dt) { snow?.visible && snow.userData.tick(t, dt); if (reflector?.visible) reflector.material.uniforms.uTime.value = t; },
     async set(name, unitsPerMeter) {
       U = unitsPerMeter ?? U;
       hasAssets ??= await fetch(`${PH}hdri/day.hdr`, { method: 'HEAD' }).then((r) => r.ok, () => false);
@@ -178,7 +200,8 @@ export function createWeather({ renderer, scene, crossing, post, ambient, key })
       restoreDry();
       if (!w.hdri) { // stylised sky from Crossing.fit
         crossing.fit(scene, U, { force: true });
-        renderer.toneMappingExposure = 1; post.grade(null); post.bloom.strength = 0.35;
+        for (const h of REFS.hills) h.visible = true;
+        renderer.toneMappingExposure = 1; post.grade(null); post.bloom.strength = 0.35; post.bloom.threshold = 1.15;
         ambient.color.set('#aaaaaa'); ambient.intensity = 1.1; key.color.set('#ffffff'); key.intensity = 0.6;
         crossing.flareHolder.visible = true; crossing.redPower = 0;
         for (const n of REFS.nightLights) { n.light.intensity = 0; if (n.mat) n.mat.emissiveIntensity = 0; }
@@ -186,6 +209,7 @@ export function createWeather({ renderer, scene, crossing, post, ambient, key })
         return current;
       }
       const sky = await loadSky(renderer, w.hdri);
+      for (const h of REFS.hills) h.visible = false; // flat toy hills look wrong under a photo sky
       // rotate the photo so its sun sits at the preset's azimuth; the light uses the same direction
       const az0 = Math.atan2(sky.sun.x, sky.sun.z), a = deg(w.az) - az0;
       scene.background = sky.tex; scene.environment = sky.env;
@@ -204,7 +228,7 @@ export function createWeather({ renderer, scene, crossing, post, ambient, key })
       ambient.color.set(w.char.amb[0]); ambient.intensity = w.char.amb[1];
       key.color.set(w.char.key[0]); key.intensity = w.char.key[1];
       key.position.copy(dir.x > 0 ? new THREE.Vector3(1, 1, 1) : new THREE.Vector3(-1, 1, 1)); // always from the viewer's side
-      post.grade(w.grade); post.bloom.strength = w.bloom;
+      post.grade(w.grade); post.bloom.strength = w.bloom; post.bloom.threshold = w.bloomThreshold ?? 1.15;
 
       // wet road
       if (w.wet) { if (!reflector) { reflector = wetRoad(); REFS.road.parent.add(reflector); } reflector.visible = true; REFS.road.visible = false; for (const m of REFS.leaves) m.color.multiplyScalar(0.85); REFS.ballast.material.color.multiplyScalar(0.7); }
@@ -230,7 +254,7 @@ export function createWeather({ renderer, scene, crossing, post, ambient, key })
       for (const r of REFS.redLights) r.distance = (r.userData.d ??= r.distance) * U;
       crossing.redPower = (night ? 40 : name === 'rain' || name === 'sunset' ? 12 : 0) * U ** 1.6;
       for (const m of REFS.windows) m.emissiveIntensity = night ? 1.6 : name === 'sunset' ? 0.25 : 0;
-      crossing.glows[0].emissiveIntensity = night ? 2.2 : 0.9; // vending panel (the rest are train lights)
+      crossing.glows[0].emissiveIntensity = night ? 0.6 : w === WEATHERS.sunset ? 0.7 : 0.55; // vending showcase (the rest are train lights)
       return current;
     },
   };
