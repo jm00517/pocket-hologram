@@ -234,16 +234,32 @@ function railway(g) {
   const z0 = TRACK_Z;
   const ballast = canvasTex(256, 256, speckle('#a29c92', [110, 90], 7000, 3), [80, 1]);
   g.add(REFS.ballast = shadows(box(400, 0.28, 4.2, pbr('#ffffff', { map: ballast, roughness: 1 }), 0, 0.06, z0), false));
-  const sleepers = new THREE.InstancedMesh(new THREE.BoxGeometry(0.22, 0.14, 2.4), pbr('#d3cec4', { roughness: 0.9 }), 400);
+  // near ±50 m: a photoscanned track section ("Railway Track 3D scan", Sketchfab, CC BY 4.0) scaled to the
+  // 1067 mm gauge, 1.44 m per piece, instanced; it loads after settle(), so it applies the hill itself
+  const PIECE = 1.44, N = 70;
+  trackModel.then((src) => {
+    src.traverse((o) => {
+      if (!o.isMesh) return;
+      noOutline(o);
+      const im = new THREE.InstancedMesh(o.geometry, o.material, N), m = new THREE.Matrix4();
+      for (let i = 0; i < N; i++) im.setMatrixAt(i, m.makeTranslation((i - N / 2 + 0.5) * PIECE, 0.47 + groundY(z0), z0));
+      im.receiveShadow = true; im.userData.draped = true;
+      g.add(im);
+    });
+  });
+  // beyond it, simple rails and sleepers out to the fog
+  const far = (N / 2) * PIECE, farLen = 200 - far;
+  const sleepers = new THREE.InstancedMesh(new THREE.BoxGeometry(0.22, 0.14, 2.0), pbr('#c9c4ba', { roughness: 0.9 }), 2 * Math.ceil(farLen / 0.6));
   const m = new THREE.Matrix4();
-  for (let i = 0; i < 400; i++) { m.makeTranslation(-120 + i * 0.6, 0.24, z0); sleepers.setMatrixAt(i, m); }
-  sleepers.castShadow = sleepers.receiveShadow = true;
+  let n = 0;
+  for (const side of [-1, 1]) for (let x = far; x < 200; x += 0.6) sleepers.setMatrixAt(n++, m.makeTranslation(side * x, 0.26, z0));
+  sleepers.count = n; sleepers.receiveShadow = true;
   g.add(sleepers);
   const rail = pbr('#b9c0c8', { metalness: 1, roughness: 0.28 }), railSide = REFS.railSide = pbr('#7a6a5c', { metalness: 0.6, roughness: 0.75 });
-  for (const dz of [-0.53, 0.53]) {
-    g.add(shadows(box(400, 0.03, 0.07, rail, 0, 0.455, z0 + dz)));       // polished head
-    g.add(shadows(box(400, 0.13, 0.045, railSide, 0, 0.375, z0 + dz)));  // rusty web
-    g.add(shadows(box(400, 0.03, 0.14, railSide, 0, 0.31, z0 + dz)));
+  for (const side of [-1, 1]) for (const dz of [-0.53, 0.53]) {
+    const cx = side * (far + farLen / 2);
+    g.add(box(farLen, 0.03, 0.07, rail, cx, 0.455, z0 + dz));
+    g.add(box(farLen, 0.13, 0.045, railSide, cx, 0.375, z0 + dz));
   }
   g.add(shadows(box(6, 0.32, 3.6, pbr('#5d6269', { roughness: 0.8 }), 0, 0.17, z0), false, true));
   for (const dz of [-0.48, 0.48]) g.add(box(6, 0.02, 0.06, pbr('#2a2c30', { roughness: 0.9 }), 0, 0.335, z0 + dz)); // flangeway gaps
@@ -456,16 +472,13 @@ function neonSign(g, x, z, rotY) {
   REFS.emitters.push({ obj: s, color: new THREE.Color('#ff4fd0'), power: () => face.emissiveIntensity * 0.6, range: 6 });
 }
 
+// Curve mirror: "Blind spot traffic mirror" (Sketchfab, CC BY 4.0), repainted Japanese orange, see CREDITS.
+// The model's mirror faces its -z, so it is turned round to face the road like the old one did.
+const trackModel = gltf.loadAsync('assets/models/track/track.glb').then((m) => m.scene);
+const mirrorModel = gltf.loadAsync('assets/models/curve_mirror/curve_mirror.glb').then((m) => m.scene);
 function curveMirror(g, x, z, rotY) {
-  const m = new THREE.Group(); m.position.set(x, 0, z); m.rotation.y = rotY;
-  const orange = pbr('#ff7a1a', { roughness: 0.35 });
-  m.add(shadows(cyl(0.05, 3.1, orange, 0, 1.55, 0)));
-  m.add(shadows(new THREE.Mesh(new THREE.TorusGeometry(0.42, 0.045, 10, 40), orange)).translateY(3.25));
-  // convex mirror: chrome dome reflecting the env map
-  const dome = noOutline(new THREE.Mesh(new THREE.SphereGeometry(0.42, 32, 16, 0, Math.PI * 2, 0, Math.PI / 2.6), pbr('#ffffff', { metalness: 1, roughness: 0.02 })));
-  dome.rotation.x = Math.PI / 2; dome.scale.y = 0.35; dome.position.set(0, 3.25, 0.02);
-  m.add(dome);
-  m.add(box(0.95, 0.04, 0.1, orange, 0, 2.75, 0));
+  const m = new THREE.Group(); m.position.set(x, 0, z); m.rotation.y = rotY + Math.PI;
+  mirrorModel.then((src) => { const c = src.clone(); c.traverse((o) => { if (o.isMesh) noOutline(o); }); m.add(shadows(c)); });
   g.add(m);
 }
 

@@ -1,5 +1,17 @@
 crossing_signal/crossing_signal.glb
-  "Railroad level crossing" by aa050928777003 on Sketchfab
+  "Railroad level crossing" by lulu the black dog (aa050928777003) on Sketchfab
   https://sketchfab.com/3d-models/efaaaf600f624383abc710273b9cd5e9
   License: CC BY 4.0 (https://creativecommons.org/licenses/by/4.0/)
   Changes: decimated to 20%, re-centred on the pole foot, textures downsized to 1024, Draco-compressed.
+
+curve_mirror/curve_mirror.glb
+  "Blind spot traffic mirror" by Insane Ninja (guru2fifa) on Sketchfab
+  https://sketchfab.com/3d-models/6b7baf381f6c45ef8d92411e0467492b
+  License: CC BY 4.0
+  Changes: pole and cover repainted orange, re-centred on the pole foot, Draco-compressed.
+
+track/track.glb
+  "Railway Track 3D scan" by grafi (zdenkoroman) on Sketchfab
+  https://sketchfab.com/3d-models/21a0ed90f355495fb80c3dcc92a94b10
+  License: CC BY 4.0
+  Changes: scaled to a 1067 mm gauge, decimated to 7%, textures 1024, Draco-compressed.
