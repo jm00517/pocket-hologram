@@ -9,6 +9,9 @@ import { REFS } from './Crossing.js';
 const MODELS = 'assets/polyhaven/models/';
 const TRACK_Z = -11;
 const wind = { value: 0 }; // shared time uniform
+// Past the tracks the verges are small and half hidden by barriers and signals: plant only a quarter as much there.
+const FAR_KEEP = 0.25;
+const skipFar = (z) => z < TRACK_Z - 2.6 && Math.random() > FAR_KEEP;
 
 // Add sway to a standard material: displacement grows with height above the instance origin.
 function windy(mat, strength, heightScale) {
@@ -56,17 +59,18 @@ function grassField(count) {
   const mesh = new THREE.InstancedMesh(geo, mat, count);
   const m = new THREE.Matrix4(), q = new THREE.Quaternion(), s = new THREE.Vector3(), c = new THREE.Color();
   let n = 0;
-  while (n < count) {
+  for (let a = 0; a < count; a++) {
     const side = Math.random() < 0.5 ? -1 : 1;
     // denser near the road edge and near the viewer
     const x = side * (3.0 + Math.pow(Math.random(), 1.6) * 9), z = 1.2 - Math.pow(Math.random(), 1.4) * 75;
-    if (Math.abs(z - TRACK_Z) < 2.4) continue;
+    if (Math.abs(z - TRACK_Z) < 2.4 || skipFar(z)) continue;
     q.setFromEuler(new THREE.Euler((Math.random() - 0.5) * 0.35, Math.random() * Math.PI * 2, (Math.random() - 0.5) * 0.35));
     s.set(1, 0.55 + Math.random() * 0.9, 1);
     mesh.setMatrixAt(n, m.compose(new THREE.Vector3(x, 0, z), q, s));
     mesh.setColorAt(n, c.setHSL(0.2 + Math.random() * 0.08, 0.35 + Math.random() * 0.15, 0.5 + Math.random() * 0.25)); // olive..green, some dry
     n++;
   }
+  mesh.count = n;
   mesh.receiveShadow = true;
   mesh.frustumCulled = false;
   return mesh;
@@ -113,9 +117,9 @@ function instance(model, transforms, { shadows = true, wind: w } = {}) {
 const place = (x, z, scale, rotY = Math.random() * 6.28) => new THREE.Matrix4().compose(new THREE.Vector3(x, 0, z), new THREE.Quaternion().setFromEuler(new THREE.Euler(0, rotY, 0)), new THREE.Vector3().setScalar(scale));
 function verge(count, minX, maxX, z0, z1, scale) {
   const out = [];
-  while (out.length < count) {
+  for (let a = 0; a < count; a++) {
     const side = Math.random() < 0.5 ? -1 : 1, x = side * (minX + Math.random() * (maxX - minX)), z = z0 - Math.random() * (z0 - z1);
-    if (Math.abs(z - TRACK_Z) < 2.6) continue;
+    if (Math.abs(z - TRACK_Z) < 2.6 || skipFar(z)) continue;
     out.push(place(x, z, scale[0] + Math.random() * (scale[1] - scale[0])));
   }
   return out;

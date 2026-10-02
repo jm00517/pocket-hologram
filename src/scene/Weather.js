@@ -94,13 +94,17 @@ function applyTextures() {
 // --- wet asphalt: planar reflection mixed with the asphalt, puddles reflect more ----------------------
 function wetRoad() {
   const mask = (() => {
-    const c = document.createElement('canvas'); c.width = 128; c.height = 1024;
-    const x = c.getContext('2d'); x.fillStyle = '#000'; x.fillRect(0, 0, 128, 1024);
-    for (let i = 0; i < 260; i++) {
-      const cx = Math.random() * 128, cy = Math.random() * 1024, r = 4 + Math.random() * 16;
-      const g = x.createRadialGradient(cx, cy, 0, cx, cy, r);
-      g.addColorStop(0, `rgba(255,${(Math.random() * 255) | 0},${(Math.random() * 255) | 0},1)`); g.addColorStop(1, 'rgba(0,128,128,0)');
-      x.fillStyle = g; x.beginPath(); x.ellipse(cx, cy, r * 1.4, r, Math.random() * 3, 0, 7); x.fill();
+    // 256x512 tiled 15x along the 6 x 180 m road: one tile = 6 x 12 m, square pixels (~2.3 cm)
+    const c = document.createElement('canvas'); c.width = 256; c.height = 512;
+    const x = c.getContext('2d'); x.fillStyle = '#000'; x.fillRect(0, 0, 256, 512);
+    for (let p = 0; p < 4; p++) { // a few puddles per tile, each a lumpy cluster of blobs
+      const px = 30 + Math.random() * 196, py = Math.random() * 512;
+      for (let i = 0; i < 5; i++) {
+        const cx = px + (Math.random() - 0.5) * 40, cy = py + (Math.random() - 0.5) * 30, r = 8 + Math.random() * 18;
+        const g = x.createRadialGradient(cx, cy, 0, cx, cy, r);
+        g.addColorStop(0, '#fff'); g.addColorStop(0.6, '#ddd'); g.addColorStop(1, 'rgba(0,0,0,0)');
+        x.fillStyle = g; x.beginPath(); x.ellipse(cx, cy, r * 1.3, r, Math.random() * 3, 0, 7); x.fill();
+      }
     }
     const t = new THREE.CanvasTexture(c); t.wrapS = t.wrapT = THREE.RepeatWrapping; return t;
   })();
@@ -137,18 +141,18 @@ function wetRoad() {
         }
         void main() {
           vec3 base = texture2D(tMap, vUv * repeat).rgb;
-          vec4 m = texture2D(tMask, vUv * vec2(1.0, 28.0));
-          float puddle = smoothstep(0.35, 0.75, m.r);
+          vec4 m = texture2D(tMask, vUv * vec2(1.0, 15.0));
+          float puddle = smoothstep(0.45, 0.6, m.r);
           vec2 pm = vUv * vec2(6.0, 180.0); // meters on the road
           vec2 wind = vec2(sin(pm.y * 3.1 + uTime * 1.7) + sin(pm.x * 4.3 - uTime * 1.3), cos(pm.x * 2.7 + pm.y * 1.9 + uTime * 2.1)) * 0.25;
           vec2 rip = drips(pm * 1.4) + wind;
-          vec4 uvr = vUvR; uvr.xy += (m.gb - 0.5) * 0.012 * (1.0 - puddle) * uvr.w; // rough film blurs, puddles stay sharp
+          vec4 uvr = vUvR; uvr.xy += (base.rg - 0.35) * 0.05 * (1.0 - puddle) * uvr.w; // damp asphalt: reflection broken up by the grain
           uvr.xy += rip * 0.006 * puddle * uvr.w;
           vec3 refl = texture2DProj(tDiffuse, uvr).rgb;
           vec3 V = normalize(cameraPosition - vWorld);
           float fres = 0.05 + 0.95 * pow(1.0 - max(V.y, 0.0), 5.0);
-          float k = clamp(mix(0.28, 0.95, puddle) * mix(fres, 1.0, puddle * 0.7) + 0.18, 0.0, 1.0);
-          gl_FragColor = vec4(mix(base * ambient * 0.55, refl, k), 1.0);
+          float k = mix(0.03 + 0.2 * fres, 0.7 + 0.25 * fres, puddle); // damp asphalt only sheens at grazing angles; puddles mirror
+          gl_FragColor = vec4(mix(base * ambient * 0.7, refl, k), 1.0);
         }`,
     },
   });
