@@ -5,7 +5,7 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
-import { loadSky } from './Weather.js';
+import { loadSky } from '../../engine/index.js';
 
 // room box: window wall at X0, board at Z0; Z1 is the screen plane (the 'window' the viewer looks through), so
 // nothing stands on the viewer's side of it
@@ -287,7 +287,7 @@ export function createClassroom(renderer) {
       bounce.intensity = 3 * U ** 2; bounce.distance = 9 * U;
       fx.dust.uniforms.uScale.value = U * 1.2;
       scene.fog = null;
-      const sky = await loadSky(renderer, 'sunset');
+      const sky = await loadSky(renderer, 'assets/polyhaven/hdri/sunset.hdr');
       const a = Math.atan2(SUN_DIR.x, SUN_DIR.z) - Math.atan2(sky.sun.x, sky.sun.z);
       scene.background = sky.tex; scene.environment = sky.env;
       scene.backgroundRotation.set(0, a, 0); scene.environmentRotation.set(0, a, 0);

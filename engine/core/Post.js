@@ -38,11 +38,13 @@ class OutlineRenderPass extends Pass {
 
 // ?perf: GPU ms per pass (EXT_disjoint_timer_query_webgl2), averaged over 60 frames. Timer queries can't
 // nest, so a nested segment (shadow maps inside the scene pass) pauses its parent and resumes it after.
-function gpuProfiler(renderer, composer) {
+// stats (refreshed every 60 frames): { fps, width, height, draws, tris, gpu, passes: { name: ms } }; hud draws them on screen.
+function gpuProfiler(renderer, composer, showHud) {
   const gl = renderer.getContext(), ext = gl.getExtension('EXT_disjoint_timer_query_webgl2');
-  const hud = Object.assign(document.createElement('pre'), { style: 'position:fixed;right:8px;bottom:8px;z-index:99;margin:0;padding:6px 8px;background:#000b;color:#9f9;font:11px monospace;pointer-events:none' });
-  document.body.append(hud);
-  if (!ext) { hud.textContent = 'no EXT_disjoint_timer_query_webgl2'; return null; }
+  const hud = showHud ? Object.assign(document.createElement('pre'), { style: 'position:fixed;right:8px;bottom:8px;z-index:99;margin:0;padding:6px 8px;background:#000b;color:#9f9;font:11px monospace;pointer-events:none' }) : null;
+  if (hud) document.body.append(hud);
+  if (!ext) { if (hud) hud.textContent = 'no EXT_disjoint_timer_query_webgl2'; return null; }
+  const stats = { frames: 0 };
   const pending = [], sum = {}, stack = [];
   let frames = 0, cpu = 0, last = performance.now(), calls = 0, tris = 0;
   const start = (label) => { const q = gl.createQuery(); gl.beginQuery(ext.TIME_ELAPSED_EXT, q); pending.push({ q, label }); };
@@ -53,6 +55,7 @@ function gpuProfiler(renderer, composer) {
   wrap(renderer.shadowMap, 'render', 'shadows');
   renderer.info.autoReset = false;
   return {
+    stats,
     frame() {
       const now = performance.now(); cpu += now - last; last = now;
       calls += renderer.info.render.calls; tris += renderer.info.render.triangles; renderer.info.reset();
@@ -64,7 +67,9 @@ function gpuProfiler(renderer, composer) {
       if (++frames < 60) return;
       const rows = Object.entries(sum).sort((a, b) => b[1] - a[1]), total = rows.reduce((s, r) => s + r[1], 0);
       const px = renderer.getDrawingBufferSize(new THREE.Vector2());
-      hud.textContent = [`${(1000 / (cpu / frames)).toFixed(0)} fps  ${px.x}x${px.y}  ${(calls / frames) | 0} draws  ${((tris / frames) / 1e6).toFixed(2)}M tris`,
+      Object.assign(stats, { frames: stats.frames + 60, fps: Math.round(1000 / (cpu / frames)), width: px.x, height: px.y, draws: (calls / frames) | 0,
+        tris: tris / frames, gpu: total / frames, passes: Object.fromEntries(rows.map(([k, v]) => [k, v / frames])) });
+      if (hud) hud.textContent = [`${(1000 / (cpu / frames)).toFixed(0)} fps  ${px.x}x${px.y}  ${(calls / frames) | 0} draws  ${((tris / frames) / 1e6).toFixed(2)}M tris`,
         `gpu ${(total / frames).toFixed(2)} ms`, ...rows.map(([k, v]) => `${k.padEnd(14)}${(v / frames).toFixed(2)}`)].join('\n');
       frames = cpu = calls = tris = 0; for (const k in sum) delete sum[k];
     },
@@ -91,7 +96,7 @@ export function createPost(renderer, scene, camera, outline) {
   const grade = new ShaderPass(GradeShader);
   composer.addPass(grade);
   composer.addPass(smaa);
-  const perf = new URLSearchParams(location.search).has('perf') ? gpuProfiler(renderer, composer) : null;
+  let perf = new URLSearchParams(location.search).has('perf') ? gpuProfiler(renderer, composer, true) : null;
   return {
     composer, ao, bloom, gradeU: grade.uniforms,
     setSize(w, h, ratio) {
@@ -102,6 +107,8 @@ export function createPost(renderer, scene, camera, outline) {
     // the outline and AO passes each render the scene again; with autoUpdate the sun's shadow map was redrawn
     // for every one of them, so draw it once per frame here instead
     render() { renderer.shadowMap.needsUpdate = true; composer.render(); perf?.frame(); },
+    // starts GPU timing on first call (no HUD); the returned object fills in after 60 frames. null: no timer queries.
+    profile() { perf ??= gpuProfiler(renderer, composer, false); return perf?.stats ?? null; },
     grade(g) {
       const u = grade.uniforms;
       u.tint.value.fromArray(g?.tint ?? [1, 1, 1]); u.sat.value = g?.sat ?? 1; u.contrast.value = g?.contrast ?? 1;

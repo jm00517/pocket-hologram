@@ -7,8 +7,8 @@
 import * as THREE from 'three';
 import { Reflector } from 'three/addons/objects/Reflector.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
-import { loadSky } from './Weather.js';
-import { trees } from './Foliage.js';
+import { loadSky } from '../../engine/index.js';
+import { trees } from './crossing/Foliage.js';
 
 const PX = 6.5, PZ0 = -1, PZ1 = -26, WY = -0.12, FY = -1.25; // basin half-width, near/far end, water level, floor
 const LANES = [-5, -3, -1, 1, 3, 5], ROPES = [-4, -2, 0, 2, 4];
@@ -501,7 +501,7 @@ export function createPool(renderer) {
       cam.left = -17 * U; cam.right = 17 * U; cam.bottom = -19 * U; cam.top = 19 * U; cam.near = 1 * U; cam.far = 140 * U; cam.updateProjectionMatrix();
       sea.material.uniforms.uU.value = U;
       scene.fog = new THREE.Fog('#c9dcef', 90 * U, 520 * U);
-      const sky = await loadSky(renderer, 'day', 1.6);
+      const sky = await loadSky(renderer, 'assets/polyhaven/hdri/day.hdr', { sat: 1.6 });
       const a = Math.atan2(SUN_DIR.x, SUN_DIR.z) - Math.atan2(sky.sun.x, sky.sun.z);
       scene.background = sky.tex; scene.environment = sky.env;
       scene.backgroundRotation.set(0, a, 0); scene.environmentRotation.set(0, a, 0);

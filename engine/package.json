@@ -1,0 +1,11 @@
+{
+  "name": "@pocket-hologram/engine",
+  "version": "0.1.0",
+  "description": "three.js engine for a character in swappable maps: toon character lighting, post chain, param registry, agent bridge",
+  "type": "module",
+  "main": "index.js",
+  "types": "types.d.ts",
+  "exports": { ".": { "types": "./types.d.ts", "default": "./index.js" } },
+  "files": ["index.js", "types.d.ts", "INDEX.md", "core", "bridge"],
+  "peerDependencies": { "three": "0.170.x" }
+}

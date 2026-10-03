@@ -1,4 +1,5 @@
-"""Local dev server: static files from the repo root (never cached) + POST /api/tts (Kasane Teto speech).
+"""Local dev server: static files from the repo root (never cached) + POST /api/tts (Kasane Teto speech)
++ the engine's agent bridge under /api/engine (see engine/bridge/relay.py, engine/bridge/cli.py).
 
     python scripts/server.py            # http://localhost:3210
 
@@ -15,6 +16,10 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / 'voice'))
+sys.path.insert(0, str(ROOT / 'engine' / 'bridge'))
+from relay import Bridge  # engine/bridge/relay.py
+
+BRIDGE = Bridge()
 try:
     import soundfile as sf
     import teto_tts
@@ -32,7 +37,13 @@ class Handler(SimpleHTTPRequestHandler):
         self.send_header('Cache-Control', 'no-store')
         super().end_headers()
 
+    def do_GET(self):
+        if not BRIDGE.handle(self):
+            super().do_GET()
+
     def do_POST(self):
+        if BRIDGE.handle(self):
+            return
         if self.path != '/api/tts':
             return self.send_error(404)
         if teto_tts is None:

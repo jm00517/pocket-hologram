@@ -7,3 +7,4 @@ dist/
 assets/*
 !assets/models/
 .tools/
+__pycache__/

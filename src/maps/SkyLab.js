@@ -235,18 +235,27 @@ export function createSkyLab(renderer) {
   apply();
 
   let scale = 1;
-  const num = (key, label, min, max, step) => [label, () => P[key], (v) => { P[key] = v; apply(); }, min, max, step];
+  const num = (id, label, doc, min, max, step) => ({ id, label, doc, min, max, step, get: () => P[id], set: (v) => { P[id] = v; apply(); } });
   return {
     group: g,
     look: { exposure: 1.0, amb: ['#c8ccd4', 1.2], key: ['#ffffff', 0.9], keyDir: new THREE.Vector3(0.3, 0.6, 1), gi: 0.6,
       grade: { tint: [1, 1, 1], sat: 1.05, contrast: 1.05, sepia: 0, vignette: 0.15 }, bloom: 0.35, bloomThreshold: 1.2 },
-    gfx: [
-      num('elev', '하늘: 해 고도', 3, 60, 0.5), num('azim', '하늘: 해 방위', -90, 90, 1), num('sun', '하늘: 햇빛', 0, 80, 0.5),
-      num('cover', '하늘: 구름 양', 0, 1, 0.01), num('density', '하늘: 구름 밀도', 0.1, 3, 0.01), num('haze', '하늘: 헤이즈', 0, 8, 0.05), num('rays', '하늘: 빛줄기 세기', 0, 8, 0.05),
-      num('holeR', '하늘: 구멍 크기', 100, 2000, 10), num('holeAhead', '하늘: 구멍 거리(km)', 0, 10, 0.1), num('base', '하늘: 구름 높이', 400, 4000, 10),
-      num('thick', '하늘: 구름 두께', 200, 3000, 10), num('wind', '하늘: 바람', 0, 40, 0.5), num('skyGain', '하늘: 하늘 밝기', 0, 3, 0.01),
+    params: [
+      num('elev', '하늘: 해 고도', 'Sun elevation, degrees.', 3, 60, 0.5),
+      num('azim', '하늘: 해 방위', 'Sun azimuth, degrees; 0 = straight ahead (-z), + = left.', -90, 90, 1),
+      num('sun', '하늘: 햇빛', 'Sun radiance multiplier (clouds, haze).', 0, 80, 0.5),
+      num('cover', '하늘: 구름 양', 'Cloud coverage bias; ~0.4 = mostly overcast with breaks.', 0, 1, 0.01),
+      num('density', '하늘: 구름 밀도', 'Cloud density multiplier.', 0.1, 3, 0.01),
+      num('haze', '하늘: 헤이즈', 'Haze density (x1e-5 per metre); the medium the rays show in.', 0, 8, 0.05),
+      num('rays', '하늘: 빛줄기 세기', 'Extra gain on sunlit haze only: crepuscular ray contrast.', 0, 8, 0.05),
+      num('holeR', '하늘: 구멍 크기', 'Radius (m) of the ragged cloud gap near the sun.', 100, 2000, 10),
+      num('holeAhead', '하늘: 구멍 거리(km)', "Where the gap's beam lands, km ahead toward the sun; moves the gap below the sun.", 0, 10, 0.1),
+      num('base', '하늘: 구름 높이', 'Cloud base altitude (m).', 400, 4000, 10),
+      num('thick', '하늘: 구름 두께', 'Cloud layer thickness (m).', 200, 3000, 10),
+      num('wind', '하늘: 바람', 'Cloud drift speed (m/s).', 0, 40, 0.5),
+      num('skyGain', '하늘: 하늘 밝기', 'Clear-sky brightness behind the clouds.', 0, 3, 0.01),
     ],
-    params: P, apply, noiseStats: () => { const d = U.tNoise.value?.image.data; if (!d) return null; let a = [1e9, -1e9, 0], b = [1e9, -1e9, 0]; for (let i = 0; i < d.length; i += 2) { a[0] = Math.min(a[0], d[i]); a[1] = Math.max(a[1], d[i]); a[2] += d[i]; b[0] = Math.min(b[0], d[i + 1]); b[1] = Math.max(b[1], d[i + 1]); b[2] += d[i + 1]; } a[2] /= d.length / 2; b[2] /= d.length / 2; return { shape: a, detail: b }; },
+    values: P, apply,
     async fit(scene, U_) {
       scale = U_; g.scale.setScalar(U_);
       if (!U.tNoise.value) U.tNoise.value = cloudNoise();
@@ -255,7 +264,7 @@ export function createSkyLab(renderer) {
       scene.background = null; scene.environment = null;
       scene.fog = new THREE.Fog(new THREE.Color().setRGB(0.5, 0.55, 0.6), 300 * U_, 2000 * U_);
     },
-    tick(t, camera) {
+    tick(t, { camera } = {}) {
       if (!U.tNoise.value || !camera) return;
       mainCam = camera;
       U.uTime.value = t; U.uWind.value.set(t * P.wind, t * P.wind * 0.35);
