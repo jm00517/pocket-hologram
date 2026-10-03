@@ -13,6 +13,7 @@ import { createPost } from './scene/Post.js';
 import { createWeather } from './scene/Weather.js';
 import { createClassroom } from './scene/Classroom.js';
 import { createPool } from './scene/Pool.js';
+import { createSkyLab } from './scene/SkyLab.js';
 import { addFoliage } from './scene/Foliage.js';
 import { createGI } from './scene/GI.js';
 import { Character, BUILTIN_MOTIONS, IDLE_POSE, DEFAULT_MODEL } from './character/Character.js';
@@ -45,7 +46,7 @@ const post=createPost(renderer,scene,camera,outline);window.post=post; // debug
 const crossing=createCrossing(renderer);window.crossing=crossing; // debug
 const weather=createWeather({renderer,scene,crossing,post,ambient,key});window.weather=weather;
 // self-lit maps: each brings its own sky, sun and character look instead of the weather presets
-const maps={classroom:createClassroom(renderer),pool:createPool(renderer)};window.maps=maps; // debug
+const maps={classroom:createClassroom(renderer),pool:createPool(renderer),sky:createSkyLab(renderer)};window.maps=maps; // debug
 // re-shoot the character's bounce light whenever what surrounds her changes (weather, background)
 const captureGI=()=>character&&gi.capture(scene,character.mesh.getWorldPosition(new THREE.Vector3()).setY(stage.position.y+charHeight*.6),character.mesh);
 let foliage=null;const foliageLevel=new URLSearchParams(location.search).get('foliage')??'full'; // full | grass | off
@@ -57,7 +58,7 @@ function applyBackground(){
   crossing.group.visible=on;for(const m of Object.values(maps))m.group.visible=m===map;
   if(chamber)chamber.visible=!on&&!room;
   blob.material.opacity=on||room?0:1; // real sun shadows replace the blob
-  weatherSel?.classList.toggle('hidden',!on);bellBtn?.classList.toggle('hidden',!on);
+  weatherSel?.classList.toggle('hidden',!on);document.querySelectorAll('#gfxCtl [data-map]').forEach(el=>el.classList.toggle('hidden',el.dataset.map!==bg));bellBtn?.classList.toggle('hidden',!on);
   if(room){const U=charHeight/1.6,L=map.look;crossing.unfit(scene);post.setScale(U);
     renderer.toneMappingExposure=L.exposure;post.grade(L.grade);post.bloom.strength=L.bloom;post.bloom.threshold=L.bloomThreshold;
     ambient.color.set(L.amb[0]);ambient.intensity=L.amb[1];key.color.set(L.key[0]);key.intensity=L.key[1];key.position.copy(L.keyDir);gi.strength.value=L.gi;
@@ -128,7 +129,7 @@ async function loadCharacter(url,manager){
 }
 const resetBtn=document.createElement('button');resetBtn.textContent='포즈 리셋';resetBtn.type='button';
 resetBtn.onclick=()=>{if(!character)return;character.reset();character.idle=true;character.director.enabled=true;motionSel.value='idle';status.textContent='reset'};
-const bgSel=document.createElement('select');bgSel.innerHTML='<option value="crossing">배경: 踏切</option><option value="classroom">배경: 放課後の教室</option><option value="pool">배경: 学校のプール</option><option value="grid">배경: 그리드</option>';bgSel.value=bg;
+const bgSel=document.createElement('select');bgSel.innerHTML='<option value="crossing">배경: 踏切</option><option value="classroom">배경: 放課後の教室</option><option value="pool">배경: 学校のプール</option><option value="sky">배경: 하늘 실험실</option><option value="grid">배경: 그리드</option>';bgSel.value=bg;
 bgSel.onchange=()=>{bg=bgSel.value;applyBackground()};
 const bellBtn=document.createElement('button');bellBtn.type='button';bellBtn.textContent='🔔 종소리 꺼짐';let bellOn=false;
 bellBtn.onclick=()=>{bellOn=!bellOn;crossing.setSound(bellOn);bellBtn.textContent=bellOn?'🔔 종소리 켜짐':'🔔 종소리 꺼짐'};
@@ -193,9 +194,10 @@ const GFX=[ // label, get, set, min, max, step
   ['대비',()=>post.gradeU.contrast.value,v=>post.gradeU.contrast.value=v,0.5,1.5,0.01],
   ['세피아',()=>post.gradeU.sepia.value,v=>post.gradeU.sepia.value=v,0,1,0.01],
   ['비네트',()=>post.gradeU.vignette.value,v=>post.gradeU.vignette.value=v,0,1,0.01],
+  ...Object.entries(maps).flatMap(([k,m])=>(m.gfx??[]).map(r=>[...r,k])), // map-only rows, shown with their map
 ];
 const gfxCtl=$('#gfxCtl');
-gfxCtl.innerHTML=GFX.map(([l,,,mn,mx,st],i)=>`<label class="slider">${l}<input type="range" min="${mn}" max="${mx}" step="${st}" data-i="${i}"><output></output></label>`).join('')+'<button type="button" data-gfx-reset>날씨 기본값으로</button>';
+gfxCtl.innerHTML=GFX.map(([l,,,mn,mx,st,map],i)=>`<label class="slider${map?' hidden':''}"${map?` data-map="${map}"`:''}>${l}<input type="range" min="${mn}" max="${mx}" step="${st}" data-i="${i}"><output></output></label>`).join('')+'<button type="button" data-gfx-reset>날씨 기본값으로</button>';
 const setGfx=(i,v)=>{GFX[i][2](v);const el=gfxCtl.querySelector(`[data-i="${i}"]`);el.value=v;el.nextElementSibling.textContent=(+v).toFixed(2)};
 // undo history: one entry per drag (value before pointer-down/keyboard nudge), Ctrl+Z / Ctrl+Shift+Z or Ctrl+Y
 const gfxUndo=[],gfxRedo=[];
@@ -283,6 +285,6 @@ function frame(){
   if(freeCam.on)flyFreeCam(dt);else{const vp=viewport();spatial.update({x:(ve.x-vp.ox)*K,y:(ve.y-vp.oy)*K,z:ve.z*K})}
   if(character){character.lookTarget=camera.position;character.update(dt);const c=character.bones['センター'].getWorldPosition(blob.position);stage.worldToLocal(c);c.y=.01}
   debugPanel.textContent=`filtered eye (m)\nx ${eye.x.toFixed(3)}\ny ${eye.y.toFixed(3)}\nz ${eye.z.toFixed(3)}\n\nraw z ${rawEye.z.toFixed(3)}\nHFOV ${calibration.data.cameraHFovDeg.toFixed(1)}°\nK ${K.toFixed(1)}`;
-  crossing.tick(clock.elapsedTime,dt);weather.tick(clock.elapsedTime,dt);for(const m of Object.values(maps))if(m.group.visible)m.tick(clock.elapsedTime);foliage?.tick(clock.elapsedTime);gi.tick(REFS.emitters);
+  crossing.tick(clock.elapsedTime,dt);weather.tick(clock.elapsedTime,dt);for(const m of Object.values(maps))if(m.group.visible)m.tick(clock.elapsedTime,camera);foliage?.tick(clock.elapsedTime);gi.tick(REFS.emitters);
   post.render();requestAnimationFrame(frame)
 }frame();
