@@ -12,7 +12,7 @@ from a CDN importmap (`index.html`).
 | `src/main.js` | The app around the engine: tracking → camera rig, calibration/window layout, character loading, drawer UI, bridge hookup. |
 | `src/maps/index.js` | Every map, in menu order. Map contract: `MapDef` / `MapInstance` in `engine/types.d.ts`. |
 | `src/maps/crossing/` | `index.js` (adapter: weather param, `moveTo` command), `Crossing.js` (world), `Weather.js` (presets), `Sea.js`, `Foliage.js`. |
-| `src/maps/Classroom.js`, `Pool.js`, `SkyLab.js` | Self-lit maps (`look` + `fit`). The SkyLab params are `sky.*`. |
+| `src/maps/Classroom.js`, `Pool.js`, `SkyLab.js` | Self-lit maps (`look` + `fit`). SkyLab wraps the engine sky (`engine/sky/`); its params are `sky.*`. |
 | `src/character/` | MMD character: `Character.js` (load, physics, play), `Behavior.js` (speech/expressions, `speakTimed`), `Motions.js` (director), `Hands.js`, `Inertia.js`. |
 | `src/ui/` | `ParamsPanel.js` (controls generated from the param registry), `ChatBar.js` (TTS + lip sync), `CalibrationPanel.js`. |
 | `src/tracking/`, `src/spatial/`, `src/calibration/` | Face/iris tracking, `OffAxisCamera`, physical screen calibration. |

@@ -5,7 +5,7 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
-import { loadSky } from '../../engine/index.js';
+import { loadSky, WIND_GLSL } from '../../engine/index.js';
 
 // room box: window wall at X0, board at Z0; Z1 is the screen plane (the 'window' the viewer looks through), so
 // nothing stands on the viewer's side of it
@@ -221,15 +221,16 @@ function shafts(g, bays) {
   dust.frustumCulled = false; g.add(dust);
   return { beams: mat, dust: dust.material };
 }
-function curtains(g, bays) {
+function curtains(g, bays, wind) {
   const time = { value: 0 };
   const mat = new THREE.MeshStandardMaterial({ color: '#f3ead6', roughness: 0.9, side: THREE.DoubleSide, transparent: true, opacity: 0.92 });
   mat.onBeforeCompile = (sh) => {
-    sh.uniforms.uTime = time;
-    sh.vertexShader = sh.vertexShader.replace('#include <common>', '#include <common>\nuniform float uTime;\nattribute float aBillow;')
+    Object.assign(sh.uniforms, { uTime: time }, wind);
+    sh.vertexShader = sh.vertexShader.replace('#include <common>', '#include <common>\nuniform float uTime;\n' + WIND_GLSL + 'attribute float aBillow;')
       .replace('#include <begin_vertex>', `#include <begin_vertex>
         float down = clamp((${HEAD.toFixed(2)} - position.y) / 1.9, 0.0, 1.0);
-        transformed.x += sin(position.z * 26.0) * 0.035 + aBillow * down * down * (0.35 + 0.25 * sin(uTime * 0.9 + position.z * 2.0) + 0.12 * sin(uTime * 2.3));
+        // the window is open: the outdoor wind (damped) fills the curtain
+        transformed.x += sin(position.z * 26.0) * 0.035 + aBillow * down * down * (0.4 + 0.6 * uWindAmp) * (0.35 + 0.25 * sin(uTime * 0.9 + position.z * 2.0) + 0.12 * sin(uTime * 2.3));
         transformed.z += aBillow * down * 0.08 * sin(uTime * 1.1);`);
   };
   mat.customProgramCacheKey = () => 'curtain';
@@ -259,10 +260,10 @@ function outside(g) {
   g.add(new THREE.Mesh(mergeGeometries(tp), trees));
 }
 
-export function createClassroom(renderer) {
+export function createClassroom(renderer, wind) {
   const g = new THREE.Group(); g.name = 'classroom'; g.visible = false;
   const bays = shell(g); front(g); desks(g); rest(g); outside(g);
-  const fx = shafts(g, bays), curtainTime = curtains(g, bays);
+  const fx = shafts(g, bays), curtainTime = curtains(g, bays, wind);
   new GLTFLoader().loadAsync('assets/polyhaven/models/wall_clock/wall_clock.gltf').then((m) => {
     const c = m.scene; const b = new THREE.Box3().setFromObject(c), sz = b.getSize(new THREE.Vector3());
     c.scale.setScalar(0.34 / Math.max(sz.x, sz.y)); c.position.set(0, 2.68, Z0 + 0.05); noInk(c); g.add(shade(c));

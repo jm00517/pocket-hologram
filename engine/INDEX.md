@@ -17,6 +17,10 @@ Read in this order: this file → `types.d.ts` (every interface, with the implem
 | Post chain: ink outlines → GTAO → bloom → tone map → grade → SMAA, GPU profiler | `core/Post.js` | `createPost()` |
 | Character-only lighting: key light, SH bounce probe (hue), real-time emitters | `core/GI.js` | `createGI()` |
 | HDRI sky + IBL + sun direction | `core/Sky.js` | `loadSky(renderer, url, { sat, tame })` |
+| World wind (one for everything): params `wind.*`, shader uniforms | `core/Wind.js` | `createWind()`, `WIND_GLSL`; `engine.wind`, `ctx.wind` |
+| Volumetric sky: raymarched clouds, rays, cloud shadows on surfaces and the subject | `sky/VolumetricSky.js` | `createVolumetricSky(renderer, { wind })` |
+| Cloud coverage as a 2D fluid (stable fluids, vorticity, condensation/evaporation) | `sky/CloudFluid.js` | `createCloudFluid(renderer, { N, S, noise })` |
+| Tileable 3D cloud noise (Perlin-Worley / Worley) | `sky/noise.js` | `getCloudNoise()` |
 | Bridge, page side | `bridge/client.js` | `connectBridge(engine)` |
 | Bridge, server side (Python, plugs into `http.server`) | `bridge/relay.py` | `Bridge().handle(handler)` |
 | Bridge, shell | `bridge/cli.py` | `python engine/bridge/cli.py <cmd>` |
@@ -37,6 +41,13 @@ Read in this order: this file → `types.d.ts` (every interface, with the implem
   The engine resets fog, background and environment between maps.
 - **Params.** Every tunable is a `ParamDef` with id, label, doc, type and range, plus get/set. `set` validates and
   clamps. UIs (`src/ui/ParamsPanel.js`) and agents read the same list.
+- **Wind.** `engine.wind` is the single wind (`wind.speed`, `wind.dir`, `wind.gust`). Shaders share
+  `wind.uniforms` (declare with `WIND_GLSL`): `uWindDir`, `uWindAmp` (1 at 4 m/s), `uWindPhase` (use instead of
+  time in sway), `uWindSpeed`. The sky's cloud fluid is driven by `wind.vector`.
+- **Sky.** `createVolumetricSky` returns a `dome` to add, `params` (map them under your map id), and
+  `tick(t, dt, camera, { origin, U })`. `patchReceiver(material, { aerial })` makes a surface take cloud shadows
+  (and the haze/rays in front of it). Scale your sun light by `sky.sunlight`, the sun reaching the subject now,
+  so the subject goes in and out of shade. See `src/maps/SkyLab.js`.
 - **Camera.** In `cameraMode: 'rig'` the app moves the camera in its `beforeFrame` listener. The `camera` command
   switches to `'manual'`, and `{ mode: 'rig' }` hands control back.
 - **Events.** `on()` takes these events:

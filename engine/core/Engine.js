@@ -6,6 +6,7 @@ import { OutlineEffect } from 'three/addons/effects/OutlineEffect.js';
 import { createPost } from './Post.js';
 import { createGI } from './GI.js';
 import { createParams } from './Params.js';
+import { createWind } from './Wind.js';
 
 // Lights/post for "no map" (and the shape every map's `look` follows; see MapLook in types.d.ts).
 const DEFAULT_LOOK = { exposure: 1, grade: null, bloom: 0.35, bloomThreshold: 1.15, amb: ['#aaaaaa', 2], key: ['#ffffff', 2.5], keyDir: [-1, 1, 1], gi: 0.6 };
@@ -25,6 +26,7 @@ export function createEngine({ canvas, far = 30000, maxPixelRatio = 2 } = {}) {
   const outline = new OutlineEffect(renderer); // MMD-style ink lines, subject only (maps set outlineParameters.visible=false)
   const post = createPost(renderer, scene, camera, outline);
   const params = createParams();
+  const wind = createWind();
   const listeners = {};
   const emit = (ev, ...a) => { for (const f of listeners[ev] ?? []) f(...a); };
 
@@ -48,7 +50,7 @@ export function createEngine({ canvas, far = 30000, maxPixelRatio = 2 } = {}) {
 
   // map lifecycle context: what a map's create() gets (MapContext in types.d.ts)
   const ctx = {
-    renderer, scene, camera, stage, post, gi, ambient, key, params,
+    renderer, scene, camera, stage, post, gi, ambient, key, params, wind,
     get units() { return U; },
     captureGI: () => captureGI(),
     /** call when a map changed its lights/sky by itself (e.g. a weather switch): re-shoots GI, tells UIs */
@@ -72,12 +74,13 @@ export function createEngine({ canvas, far = 30000, maxPixelRatio = 2 } = {}) {
     ['grade.vignette', '비네트', 'Colour grade: vignette.', () => post.gradeU.vignette.value, (v) => { post.gradeU.vignette.value = v; }, 0, 1, 0.01],
   ].map(([id, label, doc, get, set, min, max, step]) => ({ id, label, doc, get, set, min, max, step }));
   params.define(coreParams);
+  params.define(wind.params);
 
   const commands = new Map();
   const command = (name, doc, args, run) => commands.set(name, { name, doc, args, run, owner: 'engine' });
 
   const engine = {
-    renderer, scene, camera, stage, post, gi, ambient, key, params,
+    renderer, scene, camera, stage, post, gi, ambient, key, params, wind,
     /** 'rig': the app drives the camera (head-coupled window, free cam). 'manual': set by the camera command. */
     cameraMode: 'rig',
     get units() { return U; },
@@ -184,6 +187,7 @@ export function createEngine({ canvas, far = 30000, maxPixelRatio = 2 } = {}) {
       const frame = () => {
         const dt = Math.min(clock.getDelta(), 0.1), t = clock.elapsedTime;
         emit('beforeFrame', dt, t);
+        wind.tick(dt, t);
         inst?.tick?.(t, { dt, camera });
         gi.tick(inst?.emitters ?? []);
         post.render();

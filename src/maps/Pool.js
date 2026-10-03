@@ -7,8 +7,8 @@
 import * as THREE from 'three';
 import { Reflector } from 'three/addons/objects/Reflector.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
-import { loadSky } from '../../engine/index.js';
-import { trees } from './crossing/Foliage.js';
+import { loadSky, WIND_GLSL } from '../../engine/index.js';
+import { trees, useWind } from './crossing/Foliage.js';
 
 const PX = 6.5, PZ0 = -1, PZ1 = -26, WY = -0.12, FY = -1.25; // basin half-width, near/far end, water level, floor
 const LANES = [-5, -3, -1, 1, 3, 5], ROPES = [-4, -2, 0, 2, 4];
@@ -36,6 +36,7 @@ function addMerged(g, mat, geos, { cast = true, recv = true } = {}) {
   m.castShadow = cast; m.receiveShadow = recv; g.add(m); return m;
 }
 const time = { value: 0 };
+let windU = null; // engine wind uniforms (flags, trees)
 
 // --- the basin: painted tiles, lane lines, caustics ----------------------------------------------------
 const CAUSTICS = /* glsl */`
@@ -215,10 +216,10 @@ function flags(g) {
   geo.computeVertexNormals();
   const mat = new THREE.MeshStandardMaterial({ vertexColors: true, side: THREE.DoubleSide, roughness: 0.7 });
   mat.onBeforeCompile = (sh) => {
-    sh.uniforms.uTime = time;
-    sh.vertexShader = 'uniform float uTime;\nattribute float aTip;\n' + sh.vertexShader.replace('#include <begin_vertex>', `#include <begin_vertex>
-      transformed.z += aTip * (0.07 * sin(uTime * 4.2 + position.x * 1.7) + 0.05);
-      transformed.x += aTip * 0.03 * sin(uTime * 3.3 + position.x * 2.3);`);
+    Object.assign(sh.uniforms, windU);
+    sh.vertexShader = WIND_GLSL + 'attribute float aTip;\n' + sh.vertexShader.replace('#include <begin_vertex>', `#include <begin_vertex>
+      vec3 wd = vec3(uWindDir.x, 0.0, uWindDir.y), wc = vec3(-wd.z, 0.0, wd.x);
+      transformed += aTip * uWindAmp * (wd * (0.07 * sin(uWindPhase * 4.2 + position.x * 1.7) + 0.06) + wc * 0.03 * sin(uWindPhase * 3.3 + position.x * 2.3));`);
   };
   mat.customProgramCacheKey = () => 'flags';
   const f = new THREE.Mesh(geo, mat); f.castShadow = true; g.add(f);
@@ -466,7 +467,8 @@ function surroundings(g) {
   g.add(noInk(trees(spots, () => -0.03)));
 }
 
-export function createPool(renderer) {
+export function createPool(renderer, wind) {
+  windU = wind; useWind(wind);
   const g = new THREE.Group(); g.name = 'pool'; g.visible = false;
   const steel = new THREE.MeshStandardMaterial({ color: '#e4e7ea', metalness: 1, roughness: 0.18 });
   const white = new THREE.MeshStandardMaterial({ color: '#f3f4f2', roughness: 0.5 });

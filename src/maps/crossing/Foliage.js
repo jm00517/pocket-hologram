@@ -6,10 +6,13 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { DRACOLoader } from 'three/addons/loaders/DRACOLoader.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { REFS, groundY } from './Crossing.js';
+import { WIND_GLSL } from '../../../engine/index.js';
 
 const MODELS = 'assets/polyhaven/models/';
 const TRACK_Z = -11;
-const wind = { value: 0 }; // shared time uniform
+// wind uniforms (engine/core/Wind.js); a map binds the engine's with useWind() before building foliage
+const wind = { uWindDir: { value: new THREE.Vector2(1, 0) }, uWindAmp: { value: 1 }, uWindPhase: { value: 0 }, uWindSpeed: { value: 4 } };
+export const useWind = (u) => Object.assign(wind, u);
 // Past the tracks is Route 134 and the sea: plants only on the viewer's side.
 const NEAR_Z = TRACK_Z + 2.6;
 // ink outlines are for the character only; without this flag every blade and leaf was drawn a second time
@@ -18,17 +21,19 @@ const noInk = (o) => { o.traverse((m) => { for (const mat of [].concat(m.materia
 // Add sway to a standard material: displacement grows with height above the instance origin.
 function windy(mat, strength, heightScale) {
   mat.onBeforeCompile = (sh) => {
-    sh.uniforms.uTime = wind;
-    sh.vertexShader = 'uniform float uTime;\n' + sh.vertexShader.replace('#include <begin_vertex>', `#include <begin_vertex>
+    Object.assign(sh.uniforms, wind);
+    sh.vertexShader = WIND_GLSL + sh.vertexShader.replace('#include <begin_vertex>', `#include <begin_vertex>
       #ifdef USE_INSTANCING
         vec3 iw = instanceMatrix[3].xyz;
+        vec3 wl = normalize(transpose(mat3(instanceMatrix)) * vec3(uWindDir.x, 0.0, uWindDir.y)); // wind in the instance's frame
       #else
         vec3 iw = vec3(0.0);
+        vec3 wl = vec3(uWindDir.x, 0.0, uWindDir.y);
       #endif
+      vec3 wc = vec3(-wl.z, 0.0, wl.x);
       float hgt = clamp(position.y / ${heightScale.toFixed(3)}, 0.0, 1.0);
-      float sway = sin(uTime * 1.7 + iw.x * 0.35 + iw.z * 0.22) * 0.6 + sin(uTime * 3.1 + iw.z * 0.9) * 0.25;
-      transformed.x += sway * ${strength.toFixed(3)} * hgt * hgt;
-      transformed.z += cos(uTime * 1.3 + iw.x * 0.5) * ${(strength * 0.5).toFixed(3)} * hgt * hgt;`);
+      float sway = sin(uWindPhase * 1.7 + iw.x * 0.35 + iw.z * 0.22) * 0.6 + sin(uWindPhase * 3.1 + iw.z * 0.9) * 0.25;
+      transformed += (wl * sway * ${strength.toFixed(3)} + wc * cos(uWindPhase * 1.3 + iw.x * 0.5) * ${(strength * 0.5).toFixed(3)}) * uWindAmp * hgt * hgt;`);
   };
   mat.customProgramCacheKey = () => `windy${strength}${heightScale}`;
   return mat;
@@ -71,9 +76,9 @@ function tuftGeometry() {
 function grassField(count) {
   const mat = new THREE.MeshStandardMaterial({ side: THREE.DoubleSide, roughness: 0.75, vertexColors: true });
   mat.onBeforeCompile = (sh) => {
-    sh.uniforms.uTime = wind;
+    Object.assign(sh.uniforms, wind);
     sh.vertexShader = sh.vertexShader
-      .replace('#include <common>', '#include <common>\nuniform float uTime;\nattribute float aRank;\nattribute vec2 aRoot;\nvarying float vGust;')
+      .replace('#include <common>', '#include <common>\n' + WIND_GLSL + '#define uTime uWindPhase\nattribute float aRank;\nattribute vec2 aRoot;\nvarying float vGust;')
       .replace('#include <begin_vertex>', `#include <begin_vertex>
         vec3 iw = (modelMatrix * instanceMatrix * vec4(0.0, 0.0, 0.0, 1.0)).xyz;
         float S = length(modelMatrix[0].xyz);                       // scene units per metre
@@ -86,8 +91,8 @@ function grassField(count) {
         float gust = sin(dot(wp, vec2(0.8, 0.6)) * 0.3 - uTime * 1.3) * 0.5 + 0.5;
         gust = gust * gust;
         float sway = sin(uTime * 1.9 + wp.x * 0.7 + wp.y * 0.4) * 0.25 + gust;
-        transformed.x += sway * 0.09 * h2;
-        transformed.z += sin(uTime * 1.3 + wp.x * 0.5) * 0.03 * h2;
+        vec3 wl = normalize(transpose(mat3(instanceMatrix)) * vec3(uWindDir.x, 0.0, uWindDir.y)), wc = vec3(-wl.z, 0.0, wl.x);
+        transformed += (wl * sway * 0.09 + wc * sin(uTime * 1.3 + wp.x * 0.5) * 0.03) * uWindAmp * h2;
         vGust = gust * hgt;`);
     sh.fragmentShader = sh.fragmentShader
       .replace('#include <common>', '#include <common>\nvarying float vGust;')
@@ -257,7 +262,7 @@ export async function addFoliage(g, renderer, { models = true } = {}) {
   const grove = noInk(trees([[-8.5, -4.5, 1], [9.5, -1.5, 1.1], [-13, -1.5, 0.9], [13.5, -6.5, 0.85], [-16.5, -7, 1.05], [17, 0.5, 0.95]]));
   grove.userData.noAO = true; // the AO normal pass ignores alpha: cards came out as dark boxes round the crowns
   g.add(grove);
-  if (!has) return { tick(t) { wind.value = t; } };
+  if (!has) return { tick() {} };
 
   const [fern, weed, sorrel, shrub, dandelion] = await Promise.all(['fern_02', 'weed_plant_02', 'shrub_sorrel_01', 'shrub_04', 'dandelion_01'].map(variants));
   const plants = new THREE.Group();
@@ -271,5 +276,5 @@ export async function addFoliage(g, renderer, { models = true } = {}) {
   noInk(plants);
   REFS.plants = plants;
 
-  return { tick(t) { wind.value = t; } };
+  return { tick() {} };
 }

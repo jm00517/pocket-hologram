@@ -4,7 +4,7 @@ import * as THREE from 'three';
 import { defineMap } from '../../../engine/index.js';
 import { createCrossing, REFS, groundY } from './Crossing.js';
 import { createWeather } from './Weather.js';
-import { addFoliage } from './Foliage.js';
+import { addFoliage, useWind } from './Foliage.js';
 
 /** @param {{ weather?: string, foliage?: 'full'|'grass'|'off' }} opts */
 export const crossingMap = ({ weather = 'sunset', foliage = 'full' } = {}) => defineMap({
@@ -12,6 +12,7 @@ export const crossingMap = ({ weather = 'sunset', foliage = 'full' } = {}) => de
   label: '踏切',
   doc: 'Seaside railway crossing (Enoden style): sea, Route 134, hill, vending machines, train every ~42 s. Look comes from the weather param.',
   create(ctx) {
+    useWind(ctx.wind.uniforms);
     const crossing = createCrossing(ctx.renderer);
     const w = createWeather({ renderer: ctx.renderer, scene: ctx.scene, crossing, post: ctx.post, ambient: ctx.ambient, key: ctx.key });
     let fol = null, current = weather, bell = false;

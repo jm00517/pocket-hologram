@@ -3,6 +3,9 @@
 export { createEngine } from './core/Engine.js';
 export { createParams } from './core/Params.js';
 export { loadSky } from './core/Sky.js';
+export { createWind, WIND_GLSL } from './core/Wind.js';
+export { createVolumetricSky } from './sky/VolumetricSky.js';
+export { createCloudFluid } from './sky/CloudFluid.js';
 export { connectBridge } from './bridge/client.js';
 
 /**

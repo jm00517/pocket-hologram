@@ -25,6 +25,7 @@ export interface Engine {
   /** the subject-only key light (see GI) */
   key: GI['key'];
   params: Params;
+  wind: Wind;
   /** 'rig' = app moves the camera in its beforeFrame listener; 'manual' = set by setCamera/the camera command */
   cameraMode: 'rig' | 'manual';
   /** scene units per metre = subject height / 1.6 */
@@ -136,7 +137,7 @@ export interface MapDef {
 }
 export interface MapContext {
   renderer: THREE.WebGLRenderer; scene: THREE.Scene; camera: THREE.PerspectiveCamera; stage: THREE.Group;
-  post: Post; gi: GI; ambient: THREE.AmbientLight; key: GI['key']; params: Params;
+  post: Post; gi: GI; ambient: THREE.AmbientLight; key: GI['key']; params: Params; wind: Wind;
   readonly units: number;
   captureGI(): void;
   /** the map replaced its lights/sky on its own (e.g. weather param): re-shoots GI and emits 'baseline' */
@@ -200,6 +201,44 @@ export interface GI {
 /** engine/core/Sky.js */
 export function loadSky(renderer: THREE.WebGLRenderer, url: string, opts?: { sat?: number; tame?: [number, number] | null }):
   Promise<{ tex: THREE.Texture; env: THREE.Texture; sun: THREE.Vector3 }>;
+
+// ---------------------------------------------------------------------------------------------------------
+// Wind (engine/core/Wind.js) and the volumetric sky (engine/sky/*)
+// ---------------------------------------------------------------------------------------------------------
+export interface Wind {
+  /** m/s */ speed: number;
+  /** degrees the wind blows toward: 0 = -z (away from the viewer), 90 = +x */ dir: number;
+  /** 0..1 */ gust: number;
+  /** m/s on stage xz (y = 0) */ vector: THREE.Vector3;
+  uniforms: { uWindDir: { value: THREE.Vector2 }; uWindAmp: { value: number }; uWindPhase: { value: number }; uWindSpeed: { value: number } };
+  tick(dt: number, t: number): void;
+  params: ParamDef[];
+}
+export const WIND_GLSL: string;
+export function createWind(opts?: { speed?: number; dir?: number; gust?: number }): Wind;
+
+export interface VolumetricSky {
+  /** add to the scene/map group: draws the sky behind everything */
+  dome: THREE.Mesh;
+  /** unit vector toward the sun (stage metres) */
+  sunDir: THREE.Vector3;
+  /** 0..1 sun reaching the subject right now (cloud shadow at the stage origin, smoothed) */
+  readonly sunlight: number;
+  /** ids without prefix: elev, azim, sun, cover, density, base, thick, timeScale, stir, swirl, life, g, gw, amb, haze, rays, hazeG, sunGap, bankR, gapW, fan, skyGain */
+  params: ParamDef[];
+  fluid: CloudFluid;
+  patchReceiver(mat: THREE.Material, opts?: { aerial?: boolean }): THREE.Material;
+  tick(t: number, dt: number, camera: THREE.Camera, opts: { origin: THREE.Vector3; U: number }): void;
+}
+export function createVolumetricSky(renderer: THREE.WebGLRenderer, opts?: { wind?: Wind }): VolumetricSky;
+export interface CloudFluid {
+  S: number;
+  texture: THREE.Texture;
+  windOffset: THREE.Vector2;
+  step(dt: number, wind: THREE.Vector3, opts?: { cover?: number; stir?: number; conf?: number; tau?: number }): void;
+  reset(): void;
+  stats(): { water: [number, number, number]; speed: [number, number, number] };
+}
 
 // ---------------------------------------------------------------------------------------------------------
 // Bridge (engine/bridge/client.js page side, relay.py server side, cli.py shell)
