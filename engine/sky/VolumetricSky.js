@@ -29,8 +29,12 @@ const COMMON = /* glsl */`
   uniform vec2 uWindOff;
   uniform vec3 uSun;
   uniform float uDensity, uBase, uThick, uTime, uFluidS, uSunGap, uBankR, uGapW, uFan;
+  uniform vec3 uGapOff;
+  uniform float uGapCut;
   float hg(float c, float g) { float g2 = g * g; return (1.0 - g2) / (12.566 * pow(max(1.0 + g2 - 2.0 * g * c, 1e-4), 1.5)); }
-  float density(vec3 p, bool detail) {
+  // lightPath: the shadow-map pass. Small slot-shaped gaps exist only there: they cut the light into rays,
+  // while the visible clouds keep soft gaps (seen directly, backlit slivers glittered).
+  float density(vec3 p, bool detail, bool lightPath) {
     float h = (p.y - uBase) / uThick;
     if (h <= 0.0 || h >= 1.0) return 0.0;
     vec3 q = p - vec3(uWindOff.x, 0.0, uWindOff.y); // detail rides the mean wind
@@ -39,16 +43,23 @@ const COMMON = /* glsl */`
       // Art direction around the sun line (eye -> sun): a lumpy cloud where it enters the deck hides the sun;
       // behind it the line is kept clear, so the sun lights the cloud's back and its thin rim glows. Gaps open in
       // a fan below the sun; their beams run parallel to the sun line -> rays converging on the sun.
-      float along = dot(p, uSun); vec3 w = p - uSun * along; float r = length(w);
+      // the whole set piece drifts with the wind (uGapOff) and forms/dissolves on a cycle, like a real cloud
+      // crossing the sun: covered (rays, silver rim, the viewer in its shadow), then it moves on and the sun is out
+      vec3 pg = p - uGapOff;
+      float along = dot(pg, uSun); vec3 w = pg - uSun * along; float r = length(w);
       vec3 down = normalize(uSun * uSun.y - vec3(0.0, 1.0, 0.0)), side = cross(uSun, down);
       float ang = atan(dot(w, side), dot(w, down));
       float tEnt = uBase / max(uSun.y, 0.05), n3 = texture(tNoise, q / 1300.0).r;
       float fan = 1.0 - smoothstep(uFan * 0.6, uFan, abs(ang));
-      float slots = smoothstep(0.45, 0.55, texture(tNoise, vec3(ang * 2.2, r / 2600.0, 0.11 + uTime * 0.0003)).g);
-      float clearR = uBankR * (0.95 + 0.35 * smoothstep(0.35, 0.75, n3)) + uGapW * fan * slots;
+      // a thin broken clear margin all round lights the rim; below the sun, in the fan, coverage drops so the
+      // cloud's own shape noise opens a few organic gaps (cutting slots there left backlit shards that glittered)
+      float clearR = uBankR * (0.95 + 0.35 * smoothstep(0.35, 0.75, n3));
       float tube = 1.0 - smoothstep(clearR * 0.9, clearR, r + (n3 - 0.5) * uBankR * 1.3);
-      float c2 = cov * (1.0 - tube * smoothstep(tEnt - 400.0, tEnt + 200.0, along));
-      float bd = length(p - uSun * (tEnt + uBankR * 0.7)) / uBankR + (texture(tNoise, q / 650.0).r - 0.5) * 0.8 + (n3 - 0.5) * 0.6;
+      float ring = smoothstep(uBankR * 0.8, uBankR * 1.2, r) * (1.0 - smoothstep(uBankR + uGapW * 0.5, uBankR + uGapW, r));
+      float behind = smoothstep(tEnt - 400.0, tEnt + 200.0, along);
+      float c2 = cov * (1.0 - tube * behind) * (1.0 - uGapCut * fan * ring * behind);
+      if (lightPath) c2 *= 1.0 - fan * ring * behind * smoothstep(0.45, 0.55, texture(tNoise, vec3(ang * 2.2, r / 2600.0, 0.11 + uTime * 0.0003)).g);
+      float bd = length(pg - uSun * (tEnt + uBankR * 0.7)) / uBankR + (texture(tNoise, q / 650.0).r - 0.5) * 0.8 + (n3 - 0.5) * 0.6;
       c2 = max(c2, 0.97 * (1.0 - smoothstep(0.55, 1.0, bd)));
       cov = mix(cov, c2, uSunGap);
     }
@@ -59,6 +70,7 @@ const COMMON = /* glsl */`
       float det = texture(tNoise, vec3(q.x / 700.0, q.z / 700.0, q.y / 700.0 + uTime * 0.004)).g * 0.65
                 + texture(tNoise, vec3(q.x / 220.0, q.z / 220.0, q.y / 220.0 - uTime * 0.01)).g * 0.35;
       d = clamp(d - (1.0 - det) * 0.38 * (1.0 - d * 0.6), 0.0, 1.0);
+      d *= smoothstep(0.0, 0.06, d); // wisps thinner than a march step flicker in and out (glitter): let them go
     }
     return d * uDensity;
   }
@@ -94,7 +106,7 @@ const shadowFrag = /* glsl */`${COMMON}
     vec3 p = vec3((vUv.x - 0.5) * uShadowSpan, uBase, (vUv.y - 0.5) * uShadowSpan);
     float L = uThick / max(uSun.y, 0.05), dt = L / 24.0, od = 0.0;
     p += uSun * dt * 0.5;
-    for (int i = 0; i < 24; i++) { od += density(p, true) * dt; p += uSun * dt; } // detail too: it striates the rays
+    for (int i = 0; i < 24; i++) { od += density(p, true, true) * dt; p += uSun * dt; } // detail too: it striates the rays
     gl_FragColor = vec4(exp(-od * ${SIG}), 0.0, 0.0, 1.0);
   }`;
 
@@ -121,14 +133,14 @@ const skyFrag = /* glsl */`${COMMON}${LIGHT}
       : skyBg(dir, mu);
     vec3 cc = vec3(0.0); float Tc = 1.0;
     if (dir.y > 0.015 && tCloud < 70000.0) {
-      float t1 = min((uBase + uThick - o.y) / dir.y, tCloud + 14000.0), dt = (t1 - tCloud) / 64.0, t = tCloud + dt * j;
-      float ph = mix(hg(mu, -0.15), hg(mu, uG), uGw), ph2 = mix(hg(mu, -0.1), hg(mu, 0.45), 0.5);
-      for (int i = 0; i < 64; i++) {
+      float t1 = min((uBase + uThick - o.y) / dir.y, tCloud + 8000.0), dt = (t1 - tCloud) / 96.0, t = tCloud + dt * j;
+      float ph = min(mix(hg(mu, -0.15), hg(mu, uG), uGw), 2.5), ph2 = mix(hg(mu, -0.1), hg(mu, 0.45), 0.5);
+      for (int i = 0; i < 96; i++) {
         vec3 p = o + dir * t;
-        float d = density(p, true);
+        float d = density(p, true, false);
         if (d > 0.003) {
           float od = 0.0, ls = 50.0; vec3 lp = p;
-          for (int k = 0; k < 5; k++) { lp += uSun * ls; od += density(lp, false) * ls; ls *= 1.9; }
+          for (int k = 0; k < 5; k++) { lp += uSun * ls; od += density(lp, false, false) * ls; ls *= 1.9; }
           float h = (p.y - uBase) / uThick;
           vec3 lum = uSunCol * (exp(-od * ${SIG}) * ph + 0.35 * exp(-od * ${SIG} * 0.2) * ph2) + mix(uAmbLow, uAmbHigh, h) * uAmbGain;
           float ext = max(${SIG} * d, 1e-6), tr = exp(-ext * dt);
@@ -152,8 +164,8 @@ const skyFrag = /* glsl */`${COMMON}${LIGHT}
 
 export function createVolumetricSky(renderer, { wind } = {}) {
   const P = {
-    elev: 24, azim: 15, sun: 14, g: 0.75, gw: 0.5, hazeG: 0.6, amb: 0.75, cover: 0.6, density: 1.0, haze: 1.6, rays: 1.0,
-    sunGap: 1, bankR: 650, gapW: 1400, fan: 70, base: 1500, thick: 900, skyGain: 1,
+    elev: 24, azim: 15, sun: 14, g: 0.75, gw: 0.5, hazeG: 0.6, amb: 0.75, cover: 0.6, density: 1.0, haze: 1.6, rays: 1.4,
+    sunGap: 1, gapCut: 0.35, gapCycle: 70, gapDrift: 3000, bankR: 650, gapW: 1400, fan: 70, base: 1500, thick: 900, skyGain: 1,
     timeScale: 8, stir: 6, swirl: 0.35, life: 240,
   };
   const noise = getCloudNoise();
@@ -161,7 +173,7 @@ export function createVolumetricSky(renderer, { wind } = {}) {
   const U = {
     tNoise: { value: noise }, tFluid: { value: null }, uFluidS: { value: fluid.S }, uWindOff: { value: new THREE.Vector2() },
     uSun: { value: new THREE.Vector3() }, uDensity: { value: 1 }, uBase: { value: 1500 }, uThick: { value: 900 }, uTime: { value: 0 },
-    uSunGap: { value: 1 }, uBankR: { value: 650 }, uGapW: { value: 1400 }, uFan: { value: 1.2 },
+    uSunGap: { value: 1 }, uGapOff: { value: new THREE.Vector3() }, uGapCut: { value: 0.35 }, uBankR: { value: 650 }, uGapW: { value: 1400 }, uFan: { value: 1.2 },
     uShadowSpan: { value: 20000 }, tShadow: { value: null }, uHaze: { value: 1.6e-5 }, uRayGain: { value: 1 }, uHazeG: { value: 0.6 },
     uSunCol: { value: new THREE.Color() }, uAmbHigh: { value: new THREE.Color(0.62, 0.68, 0.8) }, uAmbLow: { value: new THREE.Color(0.2, 0.22, 0.26) },
     uInvProj: { value: new THREE.Matrix4() }, uCamRot: { value: new THREE.Matrix4() }, uPrevViewProj: { value: new THREE.Matrix4() }, tHistory: { value: null },
@@ -196,7 +208,7 @@ export function createVolumetricSky(renderer, { wind } = {}) {
     sunDir.set(-Math.sin(az) * Math.cos(el), Math.sin(el), -Math.cos(az) * Math.cos(el));
     U.uSun.value.copy(sunDir);
     U.uBase.value = P.base; U.uThick.value = P.thick; U.uDensity.value = P.density;
-    U.uSunGap.value = P.sunGap; U.uBankR.value = P.bankR; U.uGapW.value = P.gapW; U.uFan.value = THREE.MathUtils.degToRad(P.fan);
+    U.uSunGap.value = P.sunGap; U.uBankR.value = P.bankR; U.uGapW.value = P.gapW; U.uGapCut.value = P.gapCut; U.uFan.value = THREE.MathUtils.degToRad(P.fan);
     U.uHaze.value = P.haze * 1e-5; U.uSkyGain.value = P.skyGain; U.uRayGain.value = P.rays; U.uG.value = P.g; U.uGw.value = P.gw; U.uHazeG.value = P.hazeG; U.uAmbGain.value = P.amb;
     U.uSunCol.value.setRGB(1, 0.96, 0.9).multiplyScalar(P.sun);
   }
@@ -238,7 +250,10 @@ export function createVolumetricSky(renderer, { wind } = {}) {
       num('rays', '빛줄기 세기', 'Extra gain on sunlit haze only: crepuscular ray contrast.', 0, 8, 0.05),
       num('hazeG', '헤이즈 산란', 'Haze anisotropy: higher = rays and glow hug the sun.', 0, 0.95, 0.01),
       num('sunGap', '해 주변 연출', 'Art direction 0..1: a cloud parked over the sun with a silver rim and a fan of gaps below it (0 = pure simulation).', 0, 1, 0.01),
+      num('gapCycle', '해 가림 주기', 'Seconds for the cloud over the sun to form, drift across it with the wind and dissolve; 0 = parked over the sun.', 0, 600, 1),
+      num('gapDrift', '해 가림 이동 거리', 'How far (m) that cloud drifts during one cycle; the sun is covered for roughly bankR*2/gapDrift of it.', 0, 10000, 50),
       num('bankR', '해 가린 구름 크기', 'Radius (m) of the cloud over the sun; smaller = brighter silver edges.', 150, 3000, 10),
+      num('gapCut', '틈 크기', 'How much the fan below the sun thins the clouds (0..1): small = a few separate gaps (rays), large = one open hole.', 0, 1, 0.01),
       num('gapW', '틈 고리 폭', 'Width (m) of the ring outside it where gaps open; wider = longer rays.', 0, 5000, 10),
       num('fan', '빛줄기 부채각', 'Half-angle (deg) of the fan below the sun where gaps (and so rays) appear.', 0, 180, 1),
       num('skyGain', '하늘 밝기', 'Clear-sky brightness behind the clouds.', 0, 3, 0.01),
@@ -287,6 +302,10 @@ export function createVolumetricSky(renderer, { wind } = {}) {
       if (origin) U.uSkyOrigin.value.copy(origin);
       U.uSkyU.value = units;
       const simDt = dt * P.timeScale;
+      // the set piece's cycle (real seconds): drift from upwind to downwind across the sun line, fading in and out
+      const ph = P.gapCycle > 0 ? (t / P.gapCycle) % 1 : 0.5, wv = wind?.vector ?? new THREE.Vector3(1, 0, 0), wl = wv.length() || 1;
+      U.uGapOff.value.set(wv.x / wl, 0, wv.z / wl).multiplyScalar((ph - 0.5) * P.gapDrift);
+      U.uSunGap.value = P.sunGap * Math.pow(Math.sin(Math.PI * ph), 0.6);
       U.uTime.value += simDt;
       fluid.step(simDt, wind?.vector ?? new THREE.Vector3(9, 0, -3), { cover: P.cover, stir: P.stir, conf: P.swirl, tau: P.life });
       U.tFluid.value = fluid.texture; U.uWindOff.value.copy(fluid.windOffset);

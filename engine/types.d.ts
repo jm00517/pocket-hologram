@@ -224,7 +224,7 @@ export interface VolumetricSky {
   sunDir: THREE.Vector3;
   /** 0..1 sun reaching the subject right now (cloud shadow at the stage origin, smoothed) */
   readonly sunlight: number;
-  /** ids without prefix: elev, azim, sun, cover, density, base, thick, timeScale, stir, swirl, life, g, gw, amb, haze, rays, hazeG, sunGap, bankR, gapW, fan, skyGain */
+  /** ids without prefix: elev, azim, sun, cover, density, base, thick, timeScale, stir, swirl, life, g, gw, amb, haze, rays, hazeG, sunGap, gapCycle, gapDrift, gapCut, bankR, gapW, fan, skyGain */
   params: ParamDef[];
   fluid: CloudFluid;
   patchReceiver(mat: THREE.Material, opts?: { aerial?: boolean }): THREE.Material;
