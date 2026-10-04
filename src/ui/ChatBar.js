@@ -57,22 +57,31 @@ export function mountChatBar(getBehavior, controlsRoot) {
     say(answer);
   };
 
-  // Kasane Teto voice via the local server (scripts/server.py /api/tts); falls back to browser TTS
-  let voice = null;
+  // Voice via the local server (scripts/server.py /api/tts: Miku V6 or Teto); falls back to browser TTS.
+  // Clause by clause: the first clause plays while the next is still synthesising, so the wait is one
+  // clause (~0.3 s for Miku) instead of the whole sentence (~1 s).
+  let voice = null, turn = 0;
+  const tts = (text) => fetch('api/tts', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text }) })
+    .then((r) => (r.ok ? r.json() : Promise.reject(r.status)));
   async function say(text) {
     const beh = b();
     if (!beh) return;
+    const me = ++turn, clauses = text.split(/(?<=[、。！？!?,.])/).map((s) => s.trim()).filter(Boolean);
     try {
-      const r = await fetch('api/tts', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text }) });
-      if (r.ok) {
-        const { audio, marks } = await r.json();
+      let next = tts(clauses[0]);
+      for (let i = 0; i < clauses.length; i++) {
+        const { audio, marks } = await next;
+        if (me !== turn) return;
+        if (i + 1 < clauses.length) next = tts(clauses[i + 1]);
         voice?.pause();
         voice = new Audio('data:audio/wav;base64,' + audio);
         voice.onplay = () => beh.speakTimed(marks);
-        voice.onended = () => { beh.stopSpeaking(); beh.setState('idle'); };
+        const ended = new Promise((r) => { voice.onended = r; });
         await voice.play();
-        return;
+        await ended;
       }
+      if (me === turn) { beh.stopSpeaking(); beh.setState('idle'); }
+      return;
     } catch { /* no server / no voice library */ }
     browserSay(text);
   }

@@ -1,10 +1,11 @@
-"""Local dev server: static files from the repo root (never cached) + POST /api/tts (Kasane Teto speech)
+"""Local dev server: static files from the repo root (never cached) + POST /api/tts (speech)
 + the engine's agent bridge under /api/engine (see engine/bridge/relay.py, engine/bridge/cli.py).
 
     python scripts/server.py            # http://localhost:3210
 
-/api/tts  {"text": "こんにちは"} -> {"audio": base64 WAV, "marks": [{"v": "a", "t": 0.12}, ...]}
-Needs the Teto CV library in assets/voice/teto/cv (see voice/teto_tts.py); without it /api/tts answers 503.
+/api/tts  {"text": "こんにちは", "voice": "miku"|"teto"} -> {"audio": base64 WAV, "marks": [{"v": "a", "t": 0.12}, ...], "voice": ...}
+Voices: miku = VOCALOID6 Hatsune Miku through the headless synth (voice/v6_speech.py), teto = the Kasane Teto UTAU
+bank (voice/teto_tts.py). The default is the first one that works on this machine; with neither, /api/tts answers 503.
 """
 import base64
 import io
@@ -20,12 +21,22 @@ sys.path.insert(0, str(ROOT / 'engine' / 'bridge'))
 from relay import Bridge  # engine/bridge/relay.py
 
 BRIDGE = Bridge()
+VOICES = {}  # name -> synth(text) -> (wav bytes, marks); insertion order is the default preference
 try:
     import soundfile as sf
     import teto_tts
+
+    def teto(text):
+        y, fs, marks = teto_tts.synth(text)
+        buf = io.BytesIO(); sf.write(buf, y, fs, format='WAV', subtype='PCM_16')
+        return buf.getvalue(), marks
     threading.Thread(target=lambda: [teto_tts.analysis(v[0]) for v in teto_tts.oto().values()], daemon=True).start()  # warm every sample
+    import v6_speech
+    if v6_speech.available():
+        VOICES['miku'] = v6_speech.synth
+        threading.Thread(target=lambda: v6_speech.synth('あ'), daemon=True).start()  # start the engine and warm it
+    VOICES['teto'] = teto
 except Exception as e:  # no voice library / deps: the page falls back to browser TTS
-    teto_tts = None
     print('tts disabled:', e)
 
 
@@ -46,15 +57,17 @@ class Handler(SimpleHTTPRequestHandler):
             return
         if self.path != '/api/tts':
             return self.send_error(404)
-        if teto_tts is None:
+        if not VOICES:
             return self.reply(503, {'error': 'tts unavailable'})
         try:
-            text = str(json.loads(self.rfile.read(int(self.headers.get('Content-Length', 0))) or b'{}').get('text', '')).strip()
+            req = json.loads(self.rfile.read(int(self.headers.get('Content-Length', 0))) or b'{}')
+            text, voice = str(req.get('text', '')).strip(), req.get('voice') or next(iter(VOICES))
             if not text or len(text) > 300:
                 raise ValueError('text must be 1-300 characters')
-            y, fs, marks = teto_tts.synth(text)
-            buf = io.BytesIO(); sf.write(buf, y, fs, format='WAV', subtype='PCM_16')
-            self.reply(200, {'audio': base64.b64encode(buf.getvalue()).decode(), 'marks': marks})
+            if voice not in VOICES:
+                raise ValueError(f'voice must be one of {list(VOICES)}')
+            wav, marks = VOICES[voice](text)
+            self.reply(200, {'audio': base64.b64encode(wav).decode(), 'marks': marks, 'voice': voice})
         except ValueError as e:
             self.reply(400, {'error': str(e)})
         except Exception as e:

@@ -16,9 +16,11 @@ from a CDN importmap (`index.html`).
 | `src/character/` | MMD character: `Character.js` (load, physics, play), `Behavior.js` (speech/expressions, `speakTimed`), `Motions.js` (director), `Hands.js`, `Inertia.js`. |
 | `src/ui/` | `ParamsPanel.js` (controls generated from the param registry), `ChatBar.js` (TTS + lip sync), `CalibrationPanel.js`. |
 | `src/tracking/`, `src/spatial/`, `src/calibration/` | Face/iris tracking, `OffAxisCamera`, physical screen calibration. |
-| `scripts/server.py` | Dev server on port 3210. It serves static files with no-store, `/api/tts` (Teto voice), and `/api/engine` (bridge). |
+| `scripts/server.py` | Dev server on port 3210. It serves static files with no-store, `/api/tts` (speech: `voice` miku or teto), and `/api/engine` (bridge). |
 | `scripts/get-polyhaven.py` | Downloads the CC0 textures, HDRIs and plant models into `assets/polyhaven/` (gitignored). |
-| `voice/teto_tts.py` | Japanese concatenative TTS on the local Kasane Teto UTAU bank. Not redistributed. |
+| `voice/v6_speech.py` | Japanese speech through the local VOCALOID6 Hatsune Miku V6 model: one note per mora, accent from `teto_tts`. Needs the headless synth CLI (`V6_SYNTH`) and the installed licences; not redistributed. |
+| `voice/teto_tts.py` | Japanese concatenative TTS on the local Kasane Teto UTAU bank (pyopenjtalk accent, WORLD re-pitch). Not redistributed. |
+| `voice/vpr_speech.py` | Hiragana -> VOCALOID6 `.vpr` project that speaks it, for the editor. |
 | `assets/` | Gitignored except `assets/models/` (CC-BY props, credits in `CREDITS.txt`). |
 
 ## Run and verify
