@@ -4,7 +4,8 @@
 import * as THREE from 'three';
 import { createVolumetricSky } from '../../engine/sky/VolumetricSky.js';
 
-export function createSkyLab(renderer, wind) {
+export function createSkyLab({ renderer, wind, ambient, key }) {
+  const MOON = new THREE.Color(0.06, 0.08, 0.14); // keeps the character readable at night
   const g = new THREE.Group(); g.name = 'skylab'; g.visible = false;
   const sky = createVolumetricSky(renderer, { wind });
   g.add(sky.dome);
@@ -38,7 +39,10 @@ export function createSkyLab(renderer, wind) {
       g.getWorldPosition(origin);
       sky.tick(t, dt, camera, { origin, U: units });
       sun.position.copy(sky.sunDir).multiplyScalar(40).add(target.position);
-      sun.intensity = SUN * sky.sunlight;
+      sun.intensity = SUN * sky.sunlight; sun.color.copy(sky.sunTint);
+      fill.color.set('#c8d2e2').multiply(sky.skylight);
+      // the character's own lights follow the time of day too (colour only: the intensities are the user's sliders)
+      ambient.color.set('#c8ccd4').multiply(sky.skylight); key.color.copy(sky.sunTint).add(MOON);
     },
   };
 }

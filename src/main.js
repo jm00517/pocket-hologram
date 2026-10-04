@@ -43,7 +43,7 @@ let K=1;
 const roomDepth=v=>Math.max(.15,v.w*.5), standZ=v=>v.h*.2;
 // Meters per CSS px from the calibrated physical screen width. The viewport (not the whole screen)
 // is the window into the scene, so its size and its offset from the screen center both matter.
-const mPerPx=()=>calibration.data.screenWidthM/screen.width;
+const mPerPx=()=>calibration.data.screenWidthM/screen.width||.0254/96;
 function viewport(){
   const m=mPerPx();
   // viewport center relative to screen center, meters, +y up. Browser chrome is assumed to sit on top.
@@ -61,7 +61,9 @@ const blob=(()=>{const c=document.createElement('canvas');c.width=c.height=128;c
   const m=new THREE.Mesh(new THREE.PlaneGeometry(1,1),new THREE.MeshBasicMaterial({map:new THREE.CanvasTexture(c),transparent:true,depthWrite:false}));
   m.material.userData.outlineParameters={visible:false};m.rotation.x=-Math.PI/2;m.visible=false;stage.add(m);return m})();
 function layout(){
-  if(charHeight)K=charHeight/(.8*viewport().h); // character fills 80% of the window height
+  // character fills 80% of the window height. A page opened in a hidden window has a 0-size viewport (and
+  // screen); skip then, or K = Infinity turns the stage position NaN and blacks out the scene until a reload.
+  if(charHeight&&innerHeight)K=charHeight/(.8*viewport().h);
   const d=dims();spatial.setCalibration(d);
   if(chamber)scene.remove(chamber);
   const v=viewport(),depth=roomDepth(v)*K;

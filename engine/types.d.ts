@@ -220,11 +220,17 @@ export function createWind(opts?: { speed?: number; dir?: number; gust?: number 
 export interface VolumetricSky {
   /** add to the scene/map group: draws the sky behind everything */
   dome: THREE.Mesh;
-  /** unit vector toward the sun (stage metres) */
+  /** unit vector toward the light: the sun, or the moon at night (stage metres) */
   sunDir: THREE.Vector3;
   /** 0..1 sun reaching the subject right now (cloud shadow at the stage origin, smoothed) */
   readonly sunlight: number;
-  /** ids without prefix: elev, azim, sun, cover, density, base, thick, timeScale, stir, swirl, life, g, gw, amb, haze, rays, hazeG, sunGap, gapCycle, gapDrift, gapCut, bankR, gapW, fan, skyGain */
+  /** 0 overcast .. 1 clear: the sky within a few km above the subject (smoothed) */
+  readonly skyOpen: number;
+  /** multiplier for your sky/fill light, updated in place: blue under clear sky, brighter and neutral under cloud */
+  skylight: THREE.Color;
+  /** the sun's colour for the time of day (follows `elev`: warm and dim toward the horizon, black below it), updated in place */
+  sunTint: THREE.Color;
+  /** ids without prefix: moon, moonElev, moonAzim, stars, irid, elev, azim, sun, cover, density, base, thick, timeScale, stir, swirl, life, g, gw, amb, haze, rays, hazeG, sunGap, gapCycle, gapDrift, gapCut, bankR, gapW, fan, skyGain, sunSize, fwd, skyShift */
   params: ParamDef[];
   fluid: CloudFluid;
   patchReceiver(mat: THREE.Material, opts?: { aerial?: boolean }): THREE.Material;
