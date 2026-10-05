@@ -198,6 +198,35 @@ const skyFrag = /* glsl */`${COMMON}${LIGHT}
     gl_FragColor = vec4(col, 1.0);
   }`;
 
+/**
+ * The lights a map under this sky needs, driven by it every frame: a shadow-casting sun that follows the sun (the
+ * moon at night) with its colour and the cloud shadow where the subject stands, a hemisphere fill tinted by the sky
+ * overhead, and the subject's ambient/key colours (colour only: their intensities stay the user's sliders).
+ *   const lights = createSkyLights(sky, { ambient, key }); mapGroup.add(lights.group);
+ *   fit: lights.fitShadow(U, halfMetres)        tick, after sky.tick: lights.update()
+ */
+export function createSkyLights(sky, { ambient, key, sun: SUN = 3.2, shadowMap = 2048 } = {}) {
+  const MOON = new THREE.Color(0.06, 0.08, 0.14), FILL = new THREE.Color('#c8d2e2'), AMB = new THREE.Color('#c8ccd4'); // MOON keeps the subject readable at night
+  const sun = new THREE.DirectionalLight('#fff2e0', SUN);
+  sun.castShadow = true; sun.shadow.mapSize.set(shadowMap, shadowMap); sun.shadow.bias = -0.0004;
+  const target = new THREE.Object3D(); sun.target = target;
+  const fill = new THREE.HemisphereLight(FILL, '#4a4f44', 0.7);
+  const group = new THREE.Group(); group.add(sun, target, fill);
+  const DIST = 60; // metres from the subject to the light; the shadow box is measured from here
+  return {
+    group, sun, fill,
+    fitShadow(U, half = 10) {
+      const c = sun.shadow.camera; c.left = c.bottom = -half * U; c.right = c.top = half * U; c.near = U; c.far = (DIST + 2 * half + 20) * U; c.updateProjectionMatrix();
+    },
+    update() {
+      sun.position.copy(sky.sunDir).multiplyScalar(DIST).add(target.position);
+      sun.intensity = SUN * sky.sunlight; sun.color.copy(sky.sunTint);
+      fill.color.copy(FILL).multiply(sky.skylight);
+      ambient?.color.copy(AMB).multiply(sky.skylight); key?.color.copy(sky.sunTint).add(MOON);
+    },
+  };
+}
+
 export function createVolumetricSky(renderer, { wind } = {}) {
   const P = {
     elev: 24, azim: 15, sun: 14, g: 0.75, gw: 0.5, hazeG: 0.6, amb: 0.75, cover: 0.6, density: 1.0, haze: 1.6, rays: 1.4,
@@ -258,7 +287,7 @@ export function createVolumetricSky(renderer, { wind } = {}) {
     // white-balanced at air mass 2 (~30 deg), and goes out as the disc sinks below the horizon.
     const am = 1 / (Math.max(Math.sin(el), 0) + 0.15 * Math.pow(Math.max(P.elev, 0) + 3.885, -1.253)) - 2;
     sunTint.setRGB(Math.exp(-0.03 * am), 0.96 * Math.exp(-0.06 * am), 0.9 * Math.exp(-0.14 * am)).multiplyScalar(THREE.MathUtils.smoothstep(P.elev, -2, 1));
-    const day = THREE.MathUtils.smoothstep(P.elev, -8, 8), dusk = 1 - THREE.MathUtils.smoothstep(P.elev, 2, 22);
+    const day = THREE.MathUtils.smoothstep(P.elev, -8, 8), dusk = 1 - THREE.MathUtils.smoothstep(P.elev, 0, 14);
     const tod = (out, [n, k, d]) => out.lerpColors(d, k, dusk).lerpColors(n, out.clone(), day);
     for (const id in TOD) tod(U[id].value, TOD[id]);
     tod(fillTint, FILL);
@@ -270,7 +299,7 @@ export function createVolumetricSky(renderer, { wind } = {}) {
     const cloudTint = C(Math.exp(-0.03 * am), 0.96 * Math.exp(-0.06 * am), 0.9 * Math.exp(-0.14 * am))
       .lerp(AFTERGLOW, THREE.MathUtils.smoothstep(-P.elev, -2, 4)).multiplyScalar(THREE.MathUtils.smoothstep(P.elev, -9, -3));
     U.uSunAz.value.set(-Math.sin(az), -Math.cos(az));
-    U.uTwi.value = THREE.MathUtils.smoothstep(P.elev, -10, -1) * (1 - THREE.MathUtils.smoothstep(P.elev, 2, 14));
+    U.uTwi.value = THREE.MathUtils.smoothstep(P.elev, -10, -1) * (1 - THREE.MathUtils.smoothstep(P.elev, -1, 6)); // golden hour above ~6 deg stays blue overhead
     if (P.elev < -9) {
       const me = THREE.MathUtils.degToRad(P.moonElev), ma = THREE.MathUtils.degToRad(P.moonAzim);
       sunDir.set(-Math.sin(ma) * Math.cos(me), Math.sin(me), -Math.cos(ma) * Math.cos(me));

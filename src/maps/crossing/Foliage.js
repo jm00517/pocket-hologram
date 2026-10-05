@@ -16,7 +16,7 @@ export const useWind = (u) => Object.assign(wind, u);
 // Past the tracks is Route 134 and the sea: plants only on the viewer's side.
 const NEAR_Z = TRACK_Z + 2.6;
 // ink outlines are for the character only; without this flag every blade and leaf was drawn a second time
-const noInk = (o) => { o.traverse((m) => { for (const mat of [].concat(m.material ?? [])) mat.userData.outlineParameters = { visible: false }; }); return o; };
+export const noInk = (o) => { o.traverse((m) => { for (const mat of [].concat(m.material ?? [])) mat.userData.outlineParameters = { visible: false }; }); return o; };
 
 // Add sway to a standard material: displacement grows with height above the instance origin.
 function windy(mat, strength, heightScale) {
@@ -73,7 +73,8 @@ function tuftGeometry() {
   g.setIndex(idx);
   return g;
 }
-function grassField(count) {
+// spot() -> [x, y, z] in the map's metres, or null to skip that tuft
+export function grassField(count, spot) {
   const mat = new THREE.MeshStandardMaterial({ side: THREE.DoubleSide, roughness: 0.75, vertexColors: true });
   mat.onBeforeCompile = (sh) => {
     Object.assign(sh.uniforms, wind);
@@ -103,13 +104,11 @@ function grassField(count) {
   const m = new THREE.Matrix4(), q = new THREE.Quaternion(), s = new THREE.Vector3(), c = new THREE.Color();
   let n = 0;
   for (let a = 0; a < count; a++) {
-    const side = Math.random() < 0.5 ? -1 : 1;
-    // denser near the road edge and near the viewer
-    const x = side * (3.0 + Math.pow(Math.random(), 1.6) * 9), z = 1.2 - Math.pow(Math.random(), 1.4) * (1.2 - NEAR_Z);
-    if (z < NEAR_Z) continue;
+    const p = spot();
+    if (!p) continue;
     q.setFromEuler(new THREE.Euler((Math.random() - 0.5) * 0.2, Math.random() * Math.PI * 2, (Math.random() - 0.5) * 0.2));
     s.set(1, 0.7 + Math.random() * 0.7, 1);
-    mesh.setMatrixAt(n, m.compose(new THREE.Vector3(x, groundY(z), z), q, s));
+    mesh.setMatrixAt(n, m.compose(new THREE.Vector3(...p), q, s));
     mesh.setColorAt(n, c.setHSL(0.2 + Math.random() * 0.08, 0.35 + Math.random() * 0.15, 0.5 + Math.random() * 0.25)); // olive..green, some dry
     n++;
   }
@@ -181,13 +180,15 @@ function makeTree(seed) {
   leaves.setIndex(idx);
   return { leaves, wood: mergeGeometries(wood) };
 }
-export function trees(spots, ground = groundY) {
+// ground(x, z) -> height; refs: let the crossing's weather restyle the leaves
+export function trees(spots, ground = (x, z) => groundY(z), { refs = true } = {}) {
   const leafMat = windy(new THREE.MeshStandardMaterial({ map: leafTexture(), alphaTest: 0.5, side: THREE.DoubleSide, vertexColors: true, roughness: 0.85 }), 0.1, 6);
   const barkMat = new THREE.MeshStandardMaterial({ color: '#5e4a3a', roughness: 0.95 });
-  REFS.leaves.push(leafMat); leafMat.userData.dry = { color: leafMat.color.clone(), map: leafMat.map };
+  if (refs) REFS.leaves.push(leafMat);
+  leafMat.userData.dry = { color: leafMat.color.clone(), map: leafMat.map };
   const group = new THREE.Group();
   [makeTree(7), makeTree(31)].forEach((t, v) => {
-    const ts = spots.filter((_, i) => i % 2 === v).map(([x, z, sc]) => place(x, z, sc).setPosition(x, ground(z), z));
+    const ts = spots.filter((_, i) => i % 2 === v).map(([x, z, sc]) => place(x, z, sc).setPosition(x, ground(x, z), z));
     for (const [geo, mat] of [[t.leaves, leafMat], [t.wood, barkMat]]) {
       const im = new THREE.InstancedMesh(geo, mat, ts.length);
       ts.forEach((m, i) => im.setMatrixAt(i, m));
@@ -253,7 +254,11 @@ function verge(count, minX, maxX, z0, z1, scale) {
 
 export async function addFoliage(g, renderer, { models = true } = {}) {
   const has = models && await fetch(`${MODELS}fern_02/fern_02.gltf`, { method: 'HEAD' }).then((r) => r.ok, () => false);
-  const grass = grassField(4500);
+  // denser near the road edge and near the viewer
+  const grass = grassField(4500, () => {
+    const side = Math.random() < 0.5 ? -1 : 1, x = side * (3.0 + Math.pow(Math.random(), 1.6) * 9), z = 1.2 - Math.pow(Math.random(), 1.4) * (1.2 - NEAR_Z);
+    return z < NEAR_Z ? null : [x, groundY(z), z];
+  });
   grass.userData.noAO = true; noInk(grass);
   g.add(grass);
   REFS.grass = grass;

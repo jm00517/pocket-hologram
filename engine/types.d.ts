@@ -237,6 +237,15 @@ export interface VolumetricSky {
   tick(t: number, dt: number, camera: THREE.Camera, opts: { origin: THREE.Vector3; U: number }): void;
 }
 export function createVolumetricSky(renderer: THREE.WebGLRenderer, opts?: { wind?: Wind }): VolumetricSky;
+/** Sun (or moon) light with shadows, hemisphere fill and the subject's ambient/key colours, all driven by the sky. */
+export interface SkyLights {
+  group: THREE.Group; sun: THREE.DirectionalLight; fill: THREE.HemisphereLight;
+  /** shadow box of half-size `half` metres round the subject */
+  fitShadow(U: number, half?: number): void;
+  /** after sky.tick each frame */
+  update(): void;
+}
+export function createSkyLights(sky: VolumetricSky, opts?: { ambient?: THREE.AmbientLight; key?: GI['key']; sun?: number; shadowMap?: number }): SkyLights;
 export interface CloudFluid {
   S: number;
   texture: THREE.Texture;

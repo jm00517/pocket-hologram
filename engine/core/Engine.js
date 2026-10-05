@@ -163,7 +163,8 @@ export function createEngine({ canvas, far = 30000, maxPixelRatio = 2 } = {}) {
       engine.cameraMode = 'manual';
       if (position) camera.position.copy(toWorld(position));
       if (target) camera.lookAt(toWorld(target));
-      camera.fov = fov; camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix();
+      // near 5 cm: the default 0.01 units left far scenery (a castle 1.5 km out) with ~150 m depth steps
+      camera.fov = fov; camera.aspect = innerWidth / innerHeight; camera.near = 0.05 * U; camera.updateProjectionMatrix();
       return engine.state().camera;
     },
     /** -> { dataUrl, width, height }. width downsizes (keeps aspect). */

@@ -126,7 +126,7 @@ function flyFreeCam(dt){
   freeCam.controls.moveForward(((k.has('KeyW')?1:0)-(k.has('KeyS')?1:0))*v);
   freeCam.controls.moveRight(((k.has('KeyD')?1:0)-(k.has('KeyA')?1:0))*v);
   camera.position.y+=((k.has('Space')?1:0)-(k.has('KeyC')?1:0))*v;
-  camera.aspect=innerWidth/innerHeight;camera.fov=60;camera.updateProjectionMatrix();
+  camera.aspect=innerWidth/innerHeight;camera.fov=60;camera.near=(charHeight||1.6)/1.6*.05;camera.updateProjectionMatrix(); // 5 cm: close enough to fly up to her
 }
 $('#sceneCtl').append(bgSel);
 $('#motion').after(resetBtn);

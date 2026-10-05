@@ -10,7 +10,10 @@ export class OffAxisCamera{
   setCalibration(c){this.calibration=c}
   update(eye){
     const c=this.calibration;if(!c)return;
-    const n=this.near,f=this.far,d=Math.max(eye.z,.06);
+    // Everything is behind the screen plane, so the near plane can sit halfway to it. Depth precision goes with
+    // near: at 0.01 units a castle 1.5 km out resolved only in ~150 m steps; at d/2 it is ~0.2 m.
+    const d=Math.max(eye.z,.06),n=Math.max(this.near,d*.5),f=this.far;
+    this.camera.near=n;this.camera.far=f; // passes that read them (GTAO) must agree with the projection
     const halfW=c.screenWidthM/2,halfH=c.screenHeightM/2;
     const left=n*(-halfW-eye.x)/d,right=n*(halfW-eye.x)/d;
     const bottom=n*(-halfH-eye.y)/d,top=n*(halfH-eye.y)/d;
