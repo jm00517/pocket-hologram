@@ -162,6 +162,8 @@ export interface MapInstance {
   /** clickable ground + how to walk the subject there (map-local metres) */
   walkable?: THREE.Object3D[];
   moveTo?(p: THREE.Vector3): void;
+  /** things in the map worth a look (stage metres): the app's character glances at them */
+  interests?(): { p: Vec3; label: string }[];
 }
 /** lights and post a self-lit map wants; also the engine's default when there is no map */
 export interface MapLook {

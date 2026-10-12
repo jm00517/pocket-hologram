@@ -21,6 +21,11 @@ const FILES = {
   sway: DD('Swaying Idle Animation/Swaying Arms and Hips'), confident: DD('Confident Idle Animation/Crossed Arms Look Around Confident'),
   impatient: DD('Impatient Idle Animation/Impatient Foot Tapping'), sky: DD('Skywatching Idle Animation/Something In The Sky'),
   sniff: DD('Air Scent Idle Animation/Smelling Something in the Air'),
+  // text-to-motion clips (gen/vmd), vetted on the Sour Miku: these hold up; idle_look (she lies down),
+  // idle_breathe (whips the hair), think (just spreads the arms) and every Mixamo conversion in vmd/
+  // (hair physics explodes) do not
+  g_cheer: 'gen/vmd/cheer_0', g_clap: 'gen/vmd/clap_0', g_shy: 'gen/vmd/shy_0', g_shystand: 'gen/vmd/a_person_stands_shyly_0051_0',
+  g_nod: 'gen/vmd/listen_nod_0', g_nod2: 'gen/vmd/listen_nod_1', g_talk: 'gen/vmd/talk_both_0', g_talk2: 'gen/vmd/talk_both_1', g_talkr: 'gen/vmd/talk_right_0',
 };
 const fileOf = (name) => DIR + (FILES[name] ?? 'vmd/' + name).split('/').map(encodeURIComponent).join('/') + '.vmd';
 // Idle = MMD community motions (anime-girl stances); conversation gestures = Bandai. Missing files are
@@ -28,11 +33,12 @@ const fileOf = (name) => DIR + (FILES[name] ?? 'vmd/' + name).split('/').map(enc
 export const LIBRARY = {
   base: ['st_koa', 'st_rea', 'st_marieru', 'st_usa', 'st_ten'], // looping stands, rotated each cycle
   idle: ['stretch', 'fixhair', 'tidy', 'shyidle', 'sway', 'confident', 'impatient'], // occasional fidgets
-  listening: ['respond'],
+  listening: ['respond', 'g_nod', 'g_nod2'],
   thinking: ['sky', 'sniff'],
-  speaking: ['guide', 'guide2', 'guide3'],
+  speaking: ['guide', 'guide2', 'guide3', 'g_talk', 'g_talk2', 'g_talkr'],
   reactions: {
     bow: 'bow', hi: 'hi', byebye: 'byebye', wave: 'wave', wave2: 'wave2', raise: 'raise', call: 'call', shybow: 'shybow',
+    cheer: 'g_cheer', clap: 'g_clap', shy: 'g_shy', shystand: 'g_shystand',
   },
 };
 const FADE = 0.5;

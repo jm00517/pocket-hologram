@@ -412,10 +412,11 @@ export function createCitadel({ renderer, wind, ambient, key }) {
     [-1, 0.45, 0, 0, 0, 0.3, 0, 0, -0.15, 1, 0.45, 0, 0, 0, -0.15, 0, 0, 0.3], 3)), new THREE.MeshBasicMaterial({ color: '#15130f', side: THREE.DoubleSide }), BIRDS);
   const flock = Array.from({ length: BIRDS }, (_, k) => ({ r: 220 + rand() * 330, a: rand() * 6.28, y: 120 + rand() * 260, w: (0.05 + rand() * 0.05) * (k % 3 ? 1 : -1), f: 4 + rand() * 3 }));
   birds.frustumCulled = false; birds.userData.noAO = true; g.add(birds);
-  const bm = new THREE.Matrix4(), bq = new THREE.Quaternion(), bs = new THREE.Vector3(), bp = new THREE.Vector3(), Yb = new THREE.Vector3(0, 1, 0);
+  const lead = new THREE.Vector3(), bm = new THREE.Matrix4(), bq = new THREE.Quaternion(), bs = new THREE.Vector3(), bp = new THREE.Vector3(), Yb = new THREE.Vector3(0, 1, 0);
   const flyBirds = (t) => flock.forEach((b, k) => {
     const a = b.a + t * b.w, flap = 0.35 + 0.65 * Math.abs(Math.sin(t * b.f + k));
     bp.set(CITY.x + Math.cos(a) * b.r, b.y + Math.sin(t * 0.3 + k) * 12, CITY.z + 650 + Math.sin(a) * b.r * 0.6);
+    if (k === 0) lead.copy(bp);
     birds.setMatrixAt(k, bm.compose(bp, bq.setFromAxisAngle(Yb, -a + (b.w > 0 ? 0 : Math.PI)), bs.set(2.4, 2.4 * flap, 2.4)));
   });
 
@@ -442,6 +443,11 @@ export function createCitadel({ renderer, wind, ambient, key }) {
       num('scanBack', '스캔 깊이', 'Only with a scanned city: metres pushed back toward the mountain, so its own rock spur sinks into the cliff.', -200, 400, 1, replace),
     ],
     sky,
+    // what she looks at when her eyes leave you (src/character/Life.js), stage metres
+    interests: () => [
+      { p: [CITY.x, 760, CITY.z - 40], label: 'tower' }, { p: [CITY.x, 30, CITY.z + 560], label: 'gate' },
+      { p: lead.toArray(), label: 'birds' }, { p: [75, 80, -160], label: 'cliff' }, { p: [CITY.x - 200, 1100, CITY.z], label: 'sky' },
+    ],
     async fit(scene, U) {
       units = U; g.scale.setScalar(U);
       lights.fitShadow(U, 16);

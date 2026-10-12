@@ -13,7 +13,7 @@ from a CDN importmap (`index.html`).
 | `src/maps/index.js` | Every map, in menu order. Map contract: `MapDef` / `MapInstance` in `engine/types.d.ts`. |
 | `src/maps/crossing/` | `index.js` (adapter: weather param, `moveTo` command), `Crossing.js` (world), `Weather.js` (presets), `Sea.js`, `Foliage.js`. |
 | `src/maps/Classroom.js`, `Pool.js`, `SkyLab.js`, `Citadel.js` | Self-lit maps (`look` + `fit`). SkyLab and Citadel run on the engine sky (`engine/sky/`, lights via `createSkyLights`); their params are `sky.*` / `citadel.*`. Citadel's backdrop reaches 2 km, inside the ~2.4 km far plane. |
-| `src/character/` | MMD character: `Character.js` (load, physics, play), `Behavior.js` (speech/expressions, `speakTimed`), `Motions.js` (director), `Hands.js`, `Inertia.js`. |
+| `src/character/` | MMD character: `Character.js` (load, physics, play), `Behavior.js` (speech/expressions, `speakTimed`), `Motions.js` (director), `Life.js` (attention, reactions to the viewer, asides; `life.*` params), `Hands.js`, `Inertia.js`. |
 | `src/ui/` | `ParamsPanel.js` (controls generated from the param registry), `ChatBar.js` (TTS + lip sync), `CalibrationPanel.js`. |
 | `src/tracking/`, `src/spatial/`, `src/calibration/` | Face/iris tracking, `OffAxisCamera`, physical screen calibration. |
 | `scripts/server.py` | Dev server on port 3210. It serves static files with no-store, `/api/tts` (speech: `voice` miku or teto), and `/api/engine` (bridge). |

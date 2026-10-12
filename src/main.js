@@ -11,6 +11,7 @@ import { createTestChamber } from './scene/TestChamber.js';
 import { allMaps } from './maps/index.js';
 import { mountParamsPanel } from './ui/ParamsPanel.js';
 import { Character, BUILTIN_MOTIONS, IDLE_POSE, DEFAULT_MODEL } from './character/Character.js';
+import { Life } from './character/Life.js';
 
 const $=s=>document.querySelector(s),canvas=$('#scene'),video=$('#camera'),status=$('#status'),debugPanel=$('#debugPanel'),calPanel=$('#calibration'),motionSel=$('#motion'),modelSel=$('#modelSel');
 const calibration=new Calibration();
@@ -55,6 +56,13 @@ function viewport(){
 const dims=()=>{const v=viewport();return{...calibration.data,screenWidthM:v.w*K,screenHeightM:v.h*K}};
 let charHeight=0;
 let chamber,current=null,character=null;
+// her inner life (src/character/Life.js): shared by whichever model is loaded
+const lifeP={on:1,chatter:.5,curiosity:1};
+engine.params.define([
+  {id:'life.on',label:'생동감',doc:'Inner life on/off: gaze that wanders and comes back, reactions to the viewer (webcam), spoken asides.',min:0,max:1,step:1,get:()=>lifeP.on,set:v=>{lifeP.on=v}},
+  {id:'life.chatter',label:'혼잣말',doc:'How often she talks to herself and whether greetings are spoken (0 = silent).',min:0,max:2,step:.05,get:()=>lifeP.chatter,set:v=>{lifeP.chatter=v}},
+  {id:'life.curiosity',label:'호기심',doc:'How often her gaze leaves you to look around or at things in the map.',min:0,max:3,step:.05,get:()=>lifeP.curiosity,set:v=>{lifeP.curiosity=v}},
+]);
 // Contact shadow: a soft dark blob under the feet. Without it the eye reads the character as floating.
 const blob=(()=>{const c=document.createElement('canvas');c.width=c.height=128;const g=c.getContext('2d'),r=g.createRadialGradient(64,64,0,64,64,64);
   r.addColorStop(0,'rgba(0,0,0,.75)');r.addColorStop(1,'rgba(0,0,0,0)');g.fillStyle=r;g.fillRect(0,0,128,128);
@@ -80,6 +88,7 @@ async function loadCharacter(url,manager){
   status.textContent='loading character...';
   const c=new Character();const mesh=await c.load(url,manager);
   clearModels();character=c;window.character=c; // console / future LLM hook
+  c.life=new Life(c,{say:t=>window.chat?.say(t),P:lifeP});
   const h=new THREE.Box3().setFromObject(mesh).getSize(new THREE.Vector3()).y;
   charHeight=h;
   stage.add(mesh);blob.scale.set(h*.45,h*.3,1);blob.visible=true;layout();
@@ -165,8 +174,10 @@ addEventListener('dragover',e=>{e.preventDefault();drop.classList.remove('hidden
 addEventListener('dragleave',()=>drop.classList.add('hidden'));
 addEventListener('drop',e=>{e.preventDefault();drop.classList.add('hidden');useFiles(e.dataTransfer.files)});
 
-const tracker=new FaceTracker(video,(p,r)=>{eye=p;rawEye=r},()=>calibration.data);
-$('#start').onclick=async()=>{try{status.textContent='initializing...';await tracker.init();await tracker.start();status.textContent='tracking'}catch(e){console.error(e);status.textContent='error: '+(e.name||'')+' '+(e.message||e)}};
+// lastFace: when the webcam last saw a face (null until tracking starts) -> her sense of whether you are there
+let lastFace=null;
+const tracker=new FaceTracker(video,(p,r)=>{eye=p;rawEye=r;lastFace=performance.now()},()=>calibration.data);
+$('#start').onclick=async()=>{try{status.textContent='initializing...';await tracker.init();await tracker.start();lastFace??=0;status.textContent='tracking'}catch(e){console.error(e);status.textContent='error: '+(e.name||'')+' '+(e.message||e)}};
 $('#fullscreen').onclick=()=>{document.documentElement.requestFullscreen?.();screen.orientation?.lock?.('portrait').catch(()=>{})};
 $('#calibrate').onclick=()=>calPanel.classList.toggle('hidden');
 $('#debug').onclick=()=>debugPanel.classList.toggle('hidden');
@@ -200,7 +211,11 @@ engine.on('beforeFrame',dt=>{
   dampSpring(viewEye,viewVel,eye,hl,dt);const rest=restEye;
   const ve={x:rest.x+(viewEye.x-rest.x)*P,y:rest.y+(viewEye.y-rest.y)*P,z:rest.z+(viewEye.z-rest.z)*P};
   if(engine.cameraMode==='rig'){if(freeCam.on)flyFreeCam(dt);else{const vp=viewport();spatial.update({x:(ve.x-vp.ox)*K,y:(ve.y-vp.oy)*K,z:ve.z*K})}}
-  if(character){character.lookTarget=camera.position;character.update(dt);const c=character.bones['センター'].getWorldPosition(blob.position);stage.worldToLocal(c);c.y=.01}
+  if(character){
+    const inst=engine.mapInstance,present=lastFace===null?null:performance.now()-lastFace<1500;
+    character.life.update(dt,{viewer:camera.position,present,close:present&&ve.z<restEye.z*.62,map:engine.map,night:(inst?.sky?.values.elev??30)<-6,
+      interests:(inst?.interests?.()??[]).map(i=>({p:engine.toWorld(i.p),label:i.label}))});
+    character.update(dt);const c=character.bones['センター'].getWorldPosition(blob.position);stage.worldToLocal(c);c.y=.01}
   debugPanel.textContent=`filtered eye (m)
 x ${eye.x.toFixed(3)}
 y ${eye.y.toFixed(3)}
