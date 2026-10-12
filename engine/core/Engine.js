@@ -63,6 +63,7 @@ export function createEngine({ canvas, far = 30000, maxPixelRatio = 2 } = {}) {
     ['light.key', '키라이트', "Character-only key light intensity (toon shading's lit band).", () => key.intensity, (v) => { key.intensity = v; }, 0, 6, 0.05],
     ['gi.tint', 'GI 색조', 'How much the captured surroundings tint the character (hue only).', () => gi.strength.value, (v) => { gi.strength.value = v; }, 0, 1.5, 0.01],
     ['gi.emitters', '발광체 빛', 'Gain of real-time emitters (lamps, vending machines) on the character.', () => gi.emGain.value, (v) => { gi.emGain.value = v; }, 0, 5, 0.05],
+    ['gi.rim', '림 라이트', 'Rim on the character: the light behind her wraps her silhouette, plus an edge from the key when it is behind her (0 = off).', () => gi.rim.value, (v) => { gi.rim.value = v; }, 0, 3, 0.01],
     ['env.reflect', '하늘 반사', 'scene.environmentIntensity: image-based light on PBR surfaces.', () => scene.environmentIntensity, (v) => { scene.environmentIntensity = v; }, 0, 2, 0.01],
     ['env.background', '하늘 밝기', 'scene.backgroundIntensity: brightness of an HDRI background.', () => scene.backgroundIntensity, (v) => { scene.backgroundIntensity = v; }, 0, 2, 0.01],
     ['post.bloom', '블룸', 'Bloom strength.', () => post.bloom.strength, (v) => { post.bloom.strength = v; }, 0, 2, 0.01],

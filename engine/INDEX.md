@@ -15,7 +15,7 @@ Read in this order: this file → `types.d.ts` (every interface, with the implem
 | Renderer, loop, maps, subject, commands | `core/Engine.js` | `createEngine({ canvas })` |
 | Param registry | `core/Params.js` | `createParams()` |
 | Post chain: ink outlines → GTAO → bloom → tone map → grade → SMAA, GPU profiler | `core/Post.js` | `createPost()` |
-| Character-only lighting: key light, SH bounce probe (hue), real-time emitters | `core/GI.js` | `createGI()` |
+| Character-only lighting: key light, SH bounce probe (hue), real-time emitters, rim from what is behind her (`gi.rim`) | `core/GI.js` | `createGI()` |
 | HDRI sky + IBL + sun direction | `core/Sky.js` | `loadSky(renderer, url, { sat, tame })` |
 | World wind (one for everything): params `wind.*`, shader uniforms | `core/Wind.js` | `createWind()`, `WIND_GLSL`; `engine.wind`, `ctx.wind` |
 | Volumetric sky: raymarched clouds, rays, cloud shadows on surfaces and the subject | `sky/VolumetricSky.js` | `createVolumetricSky(renderer, { wind })` |

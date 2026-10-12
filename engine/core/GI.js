@@ -8,6 +8,9 @@
 //  * emitters: things that blink or move (crossing lamps, vending machine, street lamps) can't wait for a
 //    capture, so tick() feeds up to MAX_EM of them straight to the shader each frame: soft wrap lighting that tints
 //    and slightly brightens the side facing them, in step with their own on/off.
+//  * rim: the light behind her (probe looking past her, away from the viewer) wraps her silhouette, and the key
+//    adds a sharper edge when it comes from behind. It is what sets a cel-shaded figure into a lit place instead of
+//    pasted over it.
 import * as THREE from 'three';
 import { LightProbeGenerator } from 'three/addons/lights/LightProbeGenerator.js';
 
@@ -18,7 +21,7 @@ export function createGI(renderer) {
   const emPos = { value: Array.from({ length: MAX_EM }, () => new THREE.Vector3()) };
   const emCol = { value: Array.from({ length: MAX_EM }, () => new THREE.Vector3()) };
   const emNrm = { value: Array.from({ length: MAX_EM }, () => new THREE.Vector3()) }; // zero = omni
-  const emRange = { value: new Float32Array(MAX_EM).fill(1) }, emGain = { value: 1.2 };
+  const emRange = { value: new Float32Array(MAX_EM).fill(1) }, emGain = { value: 1.2 }, rim = { value: 1 };
   // same shape the weather code already drives on a DirectionalLight (color, intensity, position)
   const key = { color: new THREE.Color('#ffffff'), intensity: 2.5, position: new THREE.Vector3(-1, 1, 1) };
   const tmpC = new THREE.Color(), tmpV = new THREE.Vector3();
@@ -26,10 +29,10 @@ export function createGI(renderer) {
   const keyDir = { get value() { return tmpV.copy(key.position).normalize(); } };
   const cam = new THREE.CubeCamera(0.01, 30000, new THREE.WebGLCubeRenderTarget(32, { type: THREE.HalfFloatType }));
   return {
-    key, strength, emGain,
+    key, strength, emGain, rim,
     patch(mat) {
       mat.onBeforeCompile = (s) => {
-        Object.assign(s.uniforms, { uGI: sh, uGIStrength: strength, uKeyColor: keyColor, uKeyDir: keyDir, uEmPos: emPos, uEmCol: emCol, uEmNrm: emNrm, uEmRange: emRange });
+        Object.assign(s.uniforms, { uGI: sh, uGIStrength: strength, uKeyColor: keyColor, uKeyDir: keyDir, uEmPos: emPos, uEmCol: emCol, uEmNrm: emNrm, uEmRange: emRange, uRim: rim });
         s.fragmentShader = s.fragmentShader
           .replace('#include <common>', `#include <common>
             uniform vec3 uGI[ 9 ];
@@ -39,7 +42,8 @@ export function createGI(renderer) {
             uniform vec3 uEmPos[ ${MAX_EM} ];
             uniform vec3 uEmCol[ ${MAX_EM} ];
             uniform vec3 uEmNrm[ ${MAX_EM} ];
-            uniform float uEmRange[ ${MAX_EM} ];`)
+            uniform float uEmRange[ ${MAX_EM} ];
+            uniform float uRim;`)
           .replace('#include <lights_fragment_maps>', `#include <lights_fragment_maps>
             // tint only: the probe's brightness gradient on a toon face reads as muddy smudges, so keep its hue
             vec3 giIrr = max( getLightProbeIrradiance( uGI, geometryNormal ), vec3( 0.0 ) );
@@ -68,6 +72,15 @@ export function createGI(renderer) {
             // past the bloom threshold and she glowed like a lamp
             irradiance += emIrr / ( 1.0 + max( emIrr.r, max( emIrr.g, emIrr.b ) ) * 0.9 );
             reflectedLight.directSpecular += emRim / ( 1.0 + max( emRim.r, max( emRim.g, emRim.b ) ) * 1.5 );
+            {
+              float fr = pow( 1.0 - saturate( dot( geometryNormal, geometryViewDir ) ), 4.0 );
+              vec3 back = max( getLightProbeIrradiance( uGI, - geometryViewDir ), vec3( 0.0 ) ) / PI; // what is behind her
+              vec3 kd = normalize( ( viewMatrix * vec4( uKeyDir, 0.0 ) ).xyz );
+              vec3 Ks = kd - geometryViewDir * dot( kd, geometryViewDir );
+              float kside = saturate( dot( geometryNormal, Ks / max( length( Ks ), 1e-4 ) ) );
+              vec3 r = back * fr * 0.5 + uKeyColor * fr * saturate( dot( kd, - geometryViewDir ) + 0.3 ) * kside * 0.25;
+              reflectedLight.directSpecular += uRim * 16.0 * r / ( 1.0 + max( r.r, max( r.g, r.b ) ) ) * material.diffuseColor;
+            }
             IncidentLight keyLight;
             keyLight.direction = normalize( ( viewMatrix * vec4( uKeyDir, 0.0 ) ).xyz );
             keyLight.color = uKeyColor;
