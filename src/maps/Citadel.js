@@ -92,7 +92,7 @@ function terrain() {
   geo.setIndex(idx); geo.computeVertexNormals();
   // albedo by place: meadow and plain, dark stratified rock (scrub low down), snow above ~650 m
   const nrm = geo.attributes.normal, col = new Float32Array(pos.length), rock = new Float32Array(pos.length / 3);
-  const c = new THREE.Color(), MEADOW = new THREE.Color(0.5, 0.72, 0.34), FIELD = new THREE.Color(0.62, 0.7, 0.34), SCRUB = new THREE.Color(0.17, 0.23, 0.13),
+  const c = new THREE.Color(), MEADOW = new THREE.Color(0.52, 0.56, 0.3), FIELD = new THREE.Color(0.68, 0.6, 0.34), SCRUB = new THREE.Color(0.17, 0.23, 0.13),
     STONE = new THREE.Color(0.15, 0.145, 0.14), BAND = new THREE.Color(0.38, 0.35, 0.31), SNOW = new THREE.Color(0.92, 0.94, 0.98);
   for (let k = 0; k < rock.length; k++) {
     const x = pos[k * 3], y = pos[k * 3 + 1], z = pos[k * 3 + 2], ny = nrm.getY(k);
@@ -108,13 +108,13 @@ function terrain() {
   geo.setAttribute('color', new THREE.BufferAttribute(col, 3));
   geo.setAttribute('aRock', new THREE.BufferAttribute(rock, 1));
   const mat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 1 });
-  const U = { tGrass: { value: texture('sparse_grass') }, tField: { value: texture('aerial_grass_rock') }, tRock: { value: texture('rock_face_03') } };
+  const U = { uRoad: { value: new THREE.Vector4(10, -40, CITY.x, CITY.z + 560) }, tGrass: { value: texture('sparse_grass') }, tField: { value: texture('aerial_grass_rock') }, tRock: { value: texture('rock_face_03') } };
   mat.onBeforeCompile = (sh) => {
     Object.assign(sh.uniforms, U);
     sh.vertexShader = sh.vertexShader.replace('#include <common>', '#include <common>\nattribute float aRock; varying float vRock; varying vec3 vLocal, vNrm;')
       .replace('#include <begin_vertex>', '#include <begin_vertex>\nvRock = aRock; vLocal = position; vNrm = normal;');
     sh.fragmentShader = sh.fragmentShader.replace('#include <common>', `#include <common>
-        uniform sampler2D tGrass, tField, tRock; varying float vRock; varying vec3 vLocal, vNrm;
+        uniform sampler2D tGrass, tField, tRock; uniform vec4 uRoad; varying float vRock; varying vec3 vLocal, vNrm;
         ${LUM}
         float h21(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }`)
       .replace('#include <map_fragment>', `{
@@ -125,9 +125,13 @@ function terrain() {
         float plain = 1.0 - smoothstep(-450.0, -150.0, vLocal.z);
         vec2 q = mat2(0.94, -0.34, 0.34, 0.94) * p, cs = vec2(70.0, 46.0); q.x += h21(vec2(0.0, floor(q.y / cs.y))) * cs.x; cs.x *= 0.7 + 0.6 * h21(vec2(floor(q.y / cs.y), 3.0));
         vec2 id = floor(q / cs), e = min(fract(q / cs), 1.0 - fract(q / cs)) * cs;
-        vec3 crop = mix(vec3(0.82, 1.02, 0.78), vec3(1.25, 1.08, 0.62), step(0.62, h21(id))) * (0.85 + 0.3 * h21(id + 7.0));
+        vec3 crop = mix(vec3(0.9, 0.96, 0.8), vec3(1.28, 1.0, 0.58), step(0.55, h21(id))) * (0.85 + 0.3 * h21(id + 7.0));
         float hedge = (1.0 - smoothstep(0.6, 2.2, min(e.x, e.y))) * step(0.25, h21(id + 3.1)); // not every edge has a hedge
-        ground *= mix(vec3(1.0), mix(crop, vec3(0.45, 0.6, 0.38), hedge * 0.7), plain);
+        ground *= mix(vec3(1.0), mix(crop, vec3(0.45, 0.55, 0.36), hedge * 0.7), plain);
+        // the road from the meadow to the city gate: a scale cue the eye follows all the way in
+        vec2 ra = uRoad.xy, rb = uRoad.zw, rp = p + vec2(22.0 * sin(p.y / 170.0), 0.0), rd = rb - ra;
+        float road = 1.0 - smoothstep(3.0, 6.5, length(rp - ra - rd * clamp(dot(rp - ra, rd) / dot(rd, rd), 0.0, 1.0)));
+        ground = mix(ground, vec3(1.25, 1.08, 0.86) * (0.9 + 0.2 * g), road * 0.85);
         float r = tri(tRock, vLocal, normalize(vNrm), 38.0) / 0.153;
         diffuseColor.rgb *= mix(ground, vec3(mix(1.0, r, 0.8)), vRock); }`);
   };
@@ -306,7 +310,7 @@ async function loadScan(wrap, glowMat, P) {
 // The scan's albedo carries the light it was photographed under. Divide by its own blurred copy (a deep mip) to
 // keep the carving and drop the lighting, then take only luminance and recolour it as limestone.
 function scanMaterial(src) {
-  const m = new THREE.MeshStandardMaterial({ map: src.map, color: '#e4dac6', roughness: 0.92, metalness: 0 });
+  const m = new THREE.MeshStandardMaterial({ map: src.map, color: '#dedbd2', roughness: 0.92, metalness: 0 });
   m.onBeforeCompile = (sh) => {
     sh.fragmentShader = sh.fragmentShader.replace('#include <map_fragment>', `#ifdef USE_MAP
         vec3 sc = texture2D(map, vMapUv).rgb, lo = textureLod(map, vMapUv, 6.0).rgb, mid = textureLod(map, vMapUv, 4.0).rgb;
@@ -314,7 +318,11 @@ function scanMaterial(src) {
         // the statue's rock is painted greener than its masonry (green/luminance ~0.24-0.32 vs ~0.17, measured):
         // that rock becomes the mountain's dark stone, the buildings stay pale limestone
         float lm = dot(mid, vec3(0.333)), rock = smoothstep(0.175, 0.215, (mid.g - 0.5 * (mid.r + mid.b)) / max(lm, 0.01));
-        diffuseColor.rgb *= carve * mix(vec3(1.0), vec3(0.36, 0.35, 0.33), rock);
+        // centuries of rain: faint vertical streaks (noise stretched down the height), darker toward each foot
+        vec3 sp = (vSkyW - uSkyOrigin) / uSkyU;
+        float streak = fract(sin(floor(dot(sp.xz, vec2(0.7)) / 2.5) * 91.7) * 4375.5); // one value per 2.5 m column
+        float weather = 1.0 - 0.18 * smoothstep(0.55, 1.0, streak) * (0.6 + 0.4 * sin(sp.y / 23.0));
+        diffuseColor.rgb *= carve * weather * mix(vec3(1.0), vec3(0.36, 0.35, 0.33), rock);
       #endif`);
   };
   m.customProgramCacheKey = () => 'citadel-scan';
@@ -328,7 +336,9 @@ export function createCitadel({ renderer, wind, ambient, key }) {
   const sky = createVolumetricSky(renderer, { wind });
   // afternoon, the sun from the right and behind the viewer's shoulder (~55 deg off the walls' facing): it rakes across the curved walls, each tier
   // grading from lit (right) to shade (left), the prow's right face lit and its left dark. Never frontal.
-  Object.assign(sky.values, { elev: 18, azim: -125, cover: 0.42, sunGap: 0 }); sky.apply();
+  Object.assign(sky.values, { elev: 18, azim: -125, cover: 0.72, sunGap: 0, haze: 2.6, rays: 2.2,
+    hole: 420, holeX: CITY.x, holeY: 420, holeZ: CITY.z,             // a break in the clouds pours sun on the city
+    matte: 1, matteAz: 8, matteEl: 44, matteW: 18, matteD: 5000 }); sky.apply();    // and Mindolluin's snows rise behind it
   const lights = createSkyLights(sky, { ambient, key });
   g.add(sky.dome, lights.group);
 
@@ -382,7 +392,7 @@ export function createCitadel({ renderer, wind, ambient, key }) {
     const r = 1 + Math.random() ** 1.8 * 48, a = Math.random() * Math.PI * 2, x = Math.cos(a) * r, z = Math.sin(a) * r;
     const y = height(x, z);
     return z > 0.2 || y > 1.5 ? null : [x, y, z]; // not up the cliff face
-  });
+  }, (c) => c.setHSL(0.11 + Math.random() * 0.09, 0.28 + Math.random() * 0.18, 0.42 + Math.random() * 0.22)); // straw to olive
   grass.userData.noAO = true; g.add(grass);
   const spots = [[-15, -10, 1.3], [19, -24, 1.5], [-34, -46, 1.7], [40, -60, 1.6]];
   let s = 3; const rand = () => ((s = (s * 16807) % 2147483647) / 2147483647);
@@ -396,6 +406,18 @@ export function createCitadel({ renderer, wind, ambient, key }) {
   const done = new Set(); grove.traverse((o) => { if (o.material && !done.has(o.material)) { done.add(o.material); wrap(o.material); } });
   grove.userData.noAO = true; g.add(grove);
   procedural.traverse((o) => { o.userData.noAO = true; });
+  // birds wheeling between her and the city: specks that move, the last scale cue (a 3 m wingspan at ~1 km)
+  const BIRDS = 36, birds = new THREE.InstancedMesh(new THREE.BufferGeometry().setAttribute('position', new THREE.Float32BufferAttribute(
+    [-1, 0.45, 0, 0, 0, 0.3, 0, 0, -0.15, 1, 0.45, 0, 0, 0, -0.15, 0, 0, 0.3], 3)), new THREE.MeshBasicMaterial({ color: '#15130f', side: THREE.DoubleSide }), BIRDS);
+  const flock = Array.from({ length: BIRDS }, (_, k) => ({ r: 220 + rand() * 330, a: rand() * 6.28, y: 120 + rand() * 260, w: (0.05 + rand() * 0.05) * (k % 3 ? 1 : -1), f: 4 + rand() * 3 }));
+  birds.frustumCulled = false; birds.userData.noAO = true; g.add(birds);
+  const bm = new THREE.Matrix4(), bq = new THREE.Quaternion(), bs = new THREE.Vector3(), bp = new THREE.Vector3(), Yb = new THREE.Vector3(0, 1, 0);
+  const flyBirds = (t) => flock.forEach((b, k) => {
+    const a = b.a + t * b.w, flap = 0.35 + 0.65 * Math.abs(Math.sin(t * b.f + k));
+    bp.set(CITY.x + Math.cos(a) * b.r, b.y + Math.sin(t * 0.3 + k) * 12, CITY.z + 650 + Math.sin(a) * b.r * 0.6);
+    birds.setMatrixAt(k, bm.compose(bp, bq.setFromAxisAngle(Yb, -a + (b.w > 0 ? 0 : Math.PI)), bs.set(2.4, 2.4 * flap, 2.4)));
+  });
+
   noInk(g);
 
   const fog = new THREE.FogExp2(0xffffff, 0), origin = new THREE.Vector3();
@@ -406,7 +428,8 @@ export function createCitadel({ renderer, wind, ambient, key }) {
   return {
     group: g,
     look: { exposure: 1.0, amb: ['#c8ccd4', 1.0], key: ['#ffffff', 0.9], keyDir: new THREE.Vector3(0.3, 0.6, 1), gi: 0.6,
-      grade: { tint: [1, 1, 1], sat: 1.05, contrast: 1.08, sepia: 0, vignette: 0.15 }, bloom: 0.35, bloomThreshold: 1.2 },
+      // the films' Gondor grade: desaturated, cool steel shade, warm light, firm contrast
+      grade: { tint: [1, 0.98, 0.95], sat: 0.76, contrast: 1.12, sepia: 0, vignette: 0.26, shadows: [0.8, 0.9, 1.06], highlights: [1.05, 1.0, 0.9] }, bloom: 0.4, bloomThreshold: 1.1 },
     params: [
       ...sky.params,
       num('aerial', '공기 원근', 'Aerial perspective: how much the air fades the far city and mountains (optical depth at 1.5 km; squared falloff keeps the meadow clear).', 0, 2, 0.01, setFog),
@@ -424,6 +447,7 @@ export function createCitadel({ renderer, wind, ambient, key }) {
       setFog(); scene.fog = fog;
     },
     tick(t, { dt, camera }) {
+      flyBirds(t); birds.instanceMatrix.needsUpdate = true;
       g.getWorldPosition(origin);
       sky.tick(t, dt, camera, { origin, U: units });
       lights.update();

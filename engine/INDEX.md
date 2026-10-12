@@ -49,7 +49,7 @@ Read in this order: this file → `types.d.ts` (every interface, with the implem
   (and the haze/rays in front of it). Scale your sun light by `sky.sunlight`, the sun reaching the subject now,
   so the subject goes in and out of shade, and multiply your sky/fill light by `sky.skylight` so the shade's
   colour follows the cloud cover overhead. `createSkyLights(sky, { ambient, key })` does all of that for you (sun,
-  fill, the subject's light colours): add its `group`, call `fitShadow(U, half)` in fit and `update()` each tick. `elev` is the time of day: colour your sun light with `sky.sunTint`. See `src/maps/SkyLab.js`.
+  fill, the subject's light colours): add its `group`, call `fitShadow(U, half)` in fit and `update()` each tick. `elev` is the time of day: colour your sun light with `sky.sunTint`. Art direction: `hole*` opens the clouds so a column of sun lands on a chosen point (shafts in the haze); `matte*` paints a far range beyond the far plane into the sky (in front of the deck below it, lost in it above). See `src/maps/SkyLab.js`.
 - **Camera.** In `cameraMode: 'rig'` the app moves the camera in its `beforeFrame` listener. The `camera` command
   switches to `'manual'`, and `{ mode: 'rig' }` hands control back.
 - **Events.** `on()` takes these events:

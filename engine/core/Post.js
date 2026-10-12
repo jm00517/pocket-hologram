@@ -9,17 +9,19 @@ import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import { SMAAPass } from 'three/addons/postprocessing/SMAAPass.js';
 import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
 
-// Display-space colour grade: tint, saturation, contrast, sepia, vignette.
+// Display-space colour grade: tint, saturation, split toning (shadows / highlights), contrast, sepia, vignette.
 const GradeShader = {
-  uniforms: { tDiffuse: { value: null }, tint: { value: new THREE.Vector3(1, 1, 1) }, sat: { value: 1 }, contrast: { value: 1 }, sepia: { value: 0 }, vignette: { value: 0 } },
+  uniforms: { tDiffuse: { value: null }, tint: { value: new THREE.Vector3(1, 1, 1) }, sat: { value: 1 }, contrast: { value: 1 }, sepia: { value: 0 }, vignette: { value: 0 },
+    shadows: { value: new THREE.Vector3(1, 1, 1) }, highlights: { value: new THREE.Vector3(1, 1, 1) } },
   vertexShader: 'varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }',
   fragmentShader: `
-    uniform sampler2D tDiffuse; uniform vec3 tint; uniform float sat, contrast, sepia, vignette; varying vec2 vUv;
+    uniform sampler2D tDiffuse; uniform vec3 tint; uniform float sat, contrast, sepia, vignette; uniform vec3 shadows, highlights; varying vec2 vUv;
     void main() {
       vec4 c = texture2D(tDiffuse, vUv);
       vec3 col = c.rgb * tint;
       float l = dot(col, vec3(0.2126, 0.7152, 0.0722));
       col = mix(vec3(l), col, sat);
+      col *= mix(shadows, highlights, smoothstep(0.05, 0.75, l)); // split toning (film looks: cool shade, warm light)
       col = mix(col, vec3(l) * vec3(1.07, 0.88, 0.66) * 1.08, sepia);
       col = (col - 0.5) * contrast + 0.5;
       float d = distance(vUv, vec2(0.5)); col *= 1.0 - vignette * smoothstep(0.35, 0.85, d);
@@ -113,6 +115,7 @@ export function createPost(renderer, scene, camera, outline) {
       const u = grade.uniforms;
       u.tint.value.fromArray(g?.tint ?? [1, 1, 1]); u.sat.value = g?.sat ?? 1; u.contrast.value = g?.contrast ?? 1;
       u.sepia.value = g?.sepia ?? 0; u.vignette.value = g?.vignette ?? 0;
+      u.shadows.value.fromArray(g?.shadows ?? [1, 1, 1]); u.highlights.value.fromArray(g?.highlights ?? [1, 1, 1]);
     },
   };
 }

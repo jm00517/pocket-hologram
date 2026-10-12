@@ -31,6 +31,7 @@ const COMMON = /* glsl */`
   uniform vec2 uWindOff;
   uniform vec3 uSun;
   uniform float uDensity, uBase, uThick, uTime, uFluidS, uSunGap, uBankR, uGapW, uFan;
+  uniform vec3 uHole; // xy: centre (metres, xz) of an art-directed opening in the deck, z: its radius (0 = none)
   uniform vec3 uGapOff;
   uniform float uGapCut;
   float hg(float c, float g) { float g2 = g * g; return (1.0 - g2) / (12.566 * pow(max(1.0 + g2 - 2.0 * g * c, 1e-4), 1.5)); }
@@ -41,6 +42,7 @@ const COMMON = /* glsl */`
     if (h <= 0.0 || h >= 1.0) return 0.0;
     vec3 q = p - vec3(uWindOff.x, 0.0, uWindOff.y); // detail rides the mean wind
     float cov = texture2D(tFluid, p.xz / uFluidS + 0.5).r;
+    if (uHole.z > 0.0) cov *= smoothstep(uHole.z * 0.45, uHole.z, length(p.xz - uHole.xy) + (texture(tNoise, p / 1800.0).r - 0.5) * uHole.z * 0.5);
     if (uSunGap > 0.0) {
       // Art direction around the sun line (eye -> sun): a lumpy cloud where it enters the deck hides the sun;
       // behind it the line is kept clear, so the sun lights the cloud's back and its thin rim glows. Gaps open in
@@ -137,6 +139,29 @@ const skyFrag = /* glsl */`${COMMON}${LIGHT}
     return mix(vec3(0.7, 0.8, 1.0), vec3(1.0, 0.85, 0.7), h.z) * mag * smoothstep(0.22, 0.0, r) * smoothstep(0.0, 0.25, d.y) * 6.0;
   }
   uniform vec3 uAmbLow, uZenith, uHorizon, uGround; uniform vec2 uSunAz; uniform float uTwi;
+  uniform vec4 uMatte; // strength, azimuth of the peak (rad, + = left), peak elevation (rad), half-width (rad)
+  uniform float uMatteD; // its distance (m): in front of the cloud deck below atan(base / D), inside it above
+  // A matte painting: a snow range far beyond the far plane, drawn into the sky behind the clouds (the way film
+  // backdrops put the big mountain in). Ridge height is a function of azimuth; its faces are lit by which way the
+  // ridge slopes, and it sinks into the horizon haze.
+  float matteRidge(float a) {
+    float k = (a - uMatte.y) / uMatte.w;
+    float n1 = texture(tNoise, vec3(a * 1.3, 0.37, 0.61)).r, n2 = texture(tNoise, vec3(a * 3.0, 0.11, 0.29)).g;
+    return uMatte.z * (exp(-k * k) * (0.8 + 0.3 * n1) + 0.3 * (0.55 + 0.6 * n1) + 0.04 * n2);
+  }
+  bool matteHit(vec3 d) { float el = asin(clamp(d.y, -1.0, 1.0)); return uMatte.x > 0.0 && el > -0.02 && el < matteRidge(atan(-d.x, -d.z)); }
+  vec3 matte(vec3 d, vec3 sky) {
+    float a = atan(-d.x, -d.z), el = asin(clamp(d.y, -1.0, 1.0)), r = matteRidge(a);
+    // which way the ridge falls here (smoothed over ~3 deg, or the faces flicker column by column) against which
+    // side the sun is on: a slope rising to the left faces right
+    float slope = (matteRidge(a + 0.03) - matteRidge(a - 0.03)) / 0.06;
+    float sunSide = dot(normalize(uSun.xz + 1e-4), normalize(vec2(-d.z, d.x)));
+    float lit = clamp(0.35 + 0.65 * tanh(slope * 2.5) * sunSide, 0.0, 1.0) * smoothstep(-0.05, 0.15, uSun.y);
+    float k = (a - uMatte.y) / uMatte.w, snow = smoothstep(r * 0.3, r * 0.45, el + 0.04 * (texture(tNoise, vec3(a * 4.0, el * 4.0, 0.5)).g - 0.5)) * exp(-k * k * 0.5); // snow on the massif, not the range
+    vec3 alb = mix(vec3(0.12, 0.12, 0.13), vec3(0.62, 0.65, 0.72), snow);
+    vec3 col = alb * (uAmbHigh * 0.55 + uSunCol * 0.035 * lit);
+    return mix(sky, mix(col * uSkyGain, uHorizon * uSkyGain, 0.3 + 0.35 * (1.0 - smoothstep(0.0, r * 0.5, el))), uMatte.x); // far: in the haze, more at its foot
+  }
   varying vec2 vUv;
   vec3 skyBg(vec3 d, float mu) {
     float h = max(d.y, 0.0);
@@ -162,6 +187,10 @@ const skyFrag = /* glsl */`${COMMON}${LIGHT}
     vec3 bg = dir.y < 0.0
       ? uGround * (uAmbHigh * 0.55 + uSunCol * max(uSun.y, 0.0) * 0.16 * cloudShadow(o + dir * min(tGround, 40000.0)))
       : skyBg(dir, mu);
+    float tMatte = uMatteD / max(length(dir.xz), 0.05);
+    bool mHit = matteHit(dir);
+    if (mHit) bg = matte(dir, bg);          // above the deck it is seen through the gaps, its top lost in the clouds
+    if (mHit && tMatte < tCloud) tCloud = 1e9; // below the deck it stands in front: no clouds behind it
     vec3 cc = vec3(0.0); float Tc = 1.0;
     if (dir.y > 0.015 && tCloud < 70000.0) {
       float t1 = min((uBase + uThick - o.y) / dir.y, tCloud + 8000.0), dt = (t1 - tCloud) / 96.0, t = tCloud + dt * j;
@@ -190,7 +219,7 @@ const skyFrag = /* glsl */`${COMMON}${LIGHT}
       cc = mix(uHorizon * uSkyGain * (1.0 - Tc), cc, f);
     }
     float Ta;
-    vec3 ins = hazeMarch(o, dir, min(min(tGround, tCloud), 40000.0), j, 28, Ta);
+    vec3 ins = hazeMarch(o, dir, min(min(tGround, tCloud), tCloud > 1e8 && mHit ? tMatte : 40000.0), j, 28, Ta);
     vec3 col = ins + Ta * (cc + Tc * bg);
     vec4 pc = uPrevViewProj * vec4(dir, 0.0); // temporal accumulation, reprojected by direction
     vec2 puv = pc.xy / pc.w * 0.5 + 0.5;
@@ -232,6 +261,7 @@ export function createVolumetricSky(renderer, { wind } = {}) {
     elev: 24, azim: 15, sun: 14, g: 0.75, gw: 0.5, hazeG: 0.6, amb: 0.75, cover: 0.6, density: 1.0, haze: 1.6, rays: 1.4,
     sunGap: 1, gapCut: 0.35, gapCycle: 70, gapDrift: 3000, bankR: 650, gapW: 1400, fan: 70, base: 1500, thick: 900, skyGain: 1,
     timeScale: 8, stir: 6, swirl: 0.35, life: 240, sunSize: 0.53, fwd: 0.5, skyShift: 1, irid: 0.2, moon: 1, moonElev: 38, moonAzim: -20, stars: 1,
+    hole: 0, holeX: 0, holeY: 0, holeZ: -1000, matte: 0, matteAz: 0, matteEl: 40, matteW: 20, matteD: 5000,
   };
   const noise = getCloudNoise();
   const fluid = createCloudFluid(renderer, { noise });
@@ -247,6 +277,7 @@ export function createVolumetricSky(renderer, { wind } = {}) {
     // receivers: world -> stage metres, and the sun already applied to the light (see patchReceiver)
     uSkyOrigin: { value: new THREE.Vector3() }, uSkyU: { value: 1 }, uSunScale: { value: 1 },
     uSunAng: { value: 0.00925 }, uFwd: { value: 0.5 }, uIrid: { value: 0.2 }, uStars: { value: 0 }, uTwi: { value: 0 }, uSunAz: { value: new THREE.Vector2(0, -1) }, uProbe: { value: new THREE.Vector3(0, 1, 0) },
+    uHole: { value: new THREE.Vector3() }, uMatte: { value: new THREE.Vector4() }, uMatteD: { value: 5000 },
   };
   // mipmapped: cloudShadow picks the mip as wide as the penumbra, skyOpen a mip a few km wide
   const shadowRT = new THREE.WebGLRenderTarget(1024, 1024, { type: THREE.HalfFloatType, depthBuffer: false, generateMipmaps: true, minFilter: THREE.LinearMipmapLinearFilter });
@@ -308,6 +339,11 @@ export function createVolumetricSky(renderer, { wind } = {}) {
     U.uStars.value = P.stars * (1 - THREE.MathUtils.smoothstep(P.elev, -12, -6));
     if (!U.uSun.value.equals(sunDir)) U.uBlend.value = 0; // the sun moved: drop the history, or its old disc lingers as a ghost
     U.uSun.value.copy(sunDir);
+    // the hole sits where the sun's line to the target crosses the deck, so its column of light lands on the target
+    const up = (P.base - P.holeY) / Math.max(sunDir.y, 0.05);
+    U.uHole.value.set(P.holeX + sunDir.x * up, P.holeZ + sunDir.z * up, P.hole);
+    U.uMatteD.value = P.matteD;
+    U.uMatte.value.set(P.matte, THREE.MathUtils.degToRad(P.matteAz), THREE.MathUtils.degToRad(P.matteEl), THREE.MathUtils.degToRad(P.matteW));
     U.uBase.value = P.base; U.uThick.value = P.thick; U.uDensity.value = P.density;
     U.uSunGap.value = P.sunGap; U.uBankR.value = P.bankR; U.uGapW.value = P.gapW; U.uGapCut.value = P.gapCut; U.uFan.value = THREE.MathUtils.degToRad(P.fan);
     U.uHaze.value = P.haze * 1e-5; U.uSkyGain.value = P.skyGain; U.uRayGain.value = P.rays; U.uG.value = P.g; U.uGw.value = P.gw; U.uHazeG.value = P.hazeG; U.uAmbGain.value = P.amb;
@@ -366,6 +402,15 @@ export function createVolumetricSky(renderer, { wind } = {}) {
       num('moonElev', '달 고도', 'Moon elevation, degrees.', 5, 85, 0.5),
       num('moonAzim', '달 방위', 'Moon azimuth, degrees; 0 = straight ahead (-z), + = left.', -180, 180, 1),
       num('stars', '별', 'Star brightness at night (0 = none).', 0, 4, 0.05),
+      num('hole', '구름 구멍', 'Radius (m) of an art-directed opening in the clouds whose column of sun lands on (holeX, holeY, holeZ): that spot lit, around it shade, shafts in the haze. 0 = none.', 0, 3000, 10),
+      num('holeX', '구멍 목표 X', 'Where the hole sunlight lands, stage metres (x).', -3000, 3000, 10),
+      num('holeY', '구멍 목표 높이', 'Where the hole sunlight lands, stage metres (height).', -100, 1500, 10),
+      num('holeZ', '구멍 목표 Z', 'Where the hole sunlight lands, stage metres (z, - = away).', -3000, 1000, 10),
+      num('matte', '먼 산맥', 'Matte-painted snow range beyond the far plane, drawn in the sky behind the clouds (0 = none).', 0, 1, 0.01),
+      num('matteAz', '먼 산 방위', 'Azimuth (deg) of its highest peak; 0 = straight ahead, + = left.', -180, 180, 1),
+      num('matteEl', '먼 산 높이', 'Elevation angle (deg) of its highest peak.', 2, 70, 0.5),
+      num('matteW', '먼 산 폭', 'Half-width (deg) of the main massif.', 3, 90, 1),
+      num('matteD', '먼 산 거리', 'Its distance (m). Below atan(cloud base / distance) it stands in front of the clouds; above, its top is lost in them.', 2500, 30000, 100),
       num('skyShift','그늘 하늘빛', 'How far `skylight` follows the sky above the subject: blue under clear sky, brighter and neutral under cloud (0 = constant).', 0, 1, 0.01),
     ],
     /**

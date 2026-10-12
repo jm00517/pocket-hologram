@@ -171,7 +171,8 @@ export interface MapLook {
   keyDir: THREE.Vector3 | Vec3;
   /** GI hue strength */
   gi?: number;
-  grade?: { tint: Vec3; sat: number; contrast: number; sepia: number; vignette: number } | null;
+  /** shadows/highlights: split-toning multipliers (default [1,1,1]) */
+  grade?: { tint: Vec3; sat: number; contrast: number; sepia: number; vignette: number; shadows?: Vec3; highlights?: Vec3 } | null;
   bloom?: number;
   bloomThreshold?: number;
 }
@@ -230,7 +231,7 @@ export interface VolumetricSky {
   skylight: THREE.Color;
   /** the sun's colour for the time of day (follows `elev`: warm and dim toward the horizon, black below it), updated in place */
   sunTint: THREE.Color;
-  /** ids without prefix: moon, moonElev, moonAzim, stars, irid, elev, azim, sun, cover, density, base, thick, timeScale, stir, swirl, life, g, gw, amb, haze, rays, hazeG, sunGap, gapCycle, gapDrift, gapCut, bankR, gapW, fan, skyGain, sunSize, fwd, skyShift */
+  /** ids without prefix: hole, holeX, holeY, holeZ (a cloud break aimed at a point), matte, matteAz, matteEl, matteW, matteD (a matte-painted far range), moon, moonElev, moonAzim, stars, irid, elev, azim, sun, cover, density, base, thick, timeScale, stir, swirl, life, g, gw, amb, haze, rays, hazeG, sunGap, gapCycle, gapDrift, gapCut, bankR, gapW, fan, skyGain, sunSize, fwd, skyShift */
   params: ParamDef[];
   fluid: CloudFluid;
   patchReceiver(mat: THREE.Material, opts?: { aerial?: boolean }): THREE.Material;

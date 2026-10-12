@@ -73,8 +73,8 @@ function tuftGeometry() {
   g.setIndex(idx);
   return g;
 }
-// spot() -> [x, y, z] in the map's metres, or null to skip that tuft
-export function grassField(count, spot) {
+// spot() -> [x, y, z] in the map's metres, or null to skip that tuft; paint(color) sets a tuft's tint (optional)
+export function grassField(count, spot, paint) {
   const mat = new THREE.MeshStandardMaterial({ side: THREE.DoubleSide, roughness: 0.75, vertexColors: true });
   mat.onBeforeCompile = (sh) => {
     Object.assign(sh.uniforms, wind);
@@ -109,7 +109,7 @@ export function grassField(count, spot) {
     q.setFromEuler(new THREE.Euler((Math.random() - 0.5) * 0.2, Math.random() * Math.PI * 2, (Math.random() - 0.5) * 0.2));
     s.set(1, 0.7 + Math.random() * 0.7, 1);
     mesh.setMatrixAt(n, m.compose(new THREE.Vector3(...p), q, s));
-    mesh.setColorAt(n, c.setHSL(0.2 + Math.random() * 0.08, 0.35 + Math.random() * 0.15, 0.5 + Math.random() * 0.25)); // olive..green, some dry
+    mesh.setColorAt(n, paint ? paint(c) : c.setHSL(0.2 + Math.random() * 0.08, 0.35 + Math.random() * 0.15, 0.5 + Math.random() * 0.25)); // olive..green, some dry
     n++;
   }
   mesh.count = n;
