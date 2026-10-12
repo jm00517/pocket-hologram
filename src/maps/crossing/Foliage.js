@@ -122,15 +122,17 @@ export function grassField(count, spot, paint) {
 // Stylised leaf-card trees (the Ghibli / Genshin approach): a tapered trunk and branches, and a crown of a
 // few hundred alpha-cut cards painted with leaf clusters. Card normals point out from the crown, so the whole
 // crown shades like one soft volume instead of thousands of tiny leaves. About 600 triangles per tree.
-function leafTexture() {
+// look: leaf hue/saturation/lightness ranges ([min, span] each); the defaults are the crossing's bright anime greens
+const BRIGHT = { h: [92, 28], s: [32, 18], l: [20, 22] };
+function leafTexture(look = BRIGHT, count = 70) {
   const c = document.createElement('canvas'); c.width = c.height = 256;
   const x = c.getContext('2d');
-  for (let i = 0; i < 70; i++) {
+  for (let i = 0; i < count; i++) {
     const a = Math.random() * Math.PI * 2, d = Math.sqrt(Math.random()) * 100;
     const px = 128 + Math.cos(a) * d, py = 128 + Math.sin(a) * d, len = 16 + Math.random() * 16;
-    const l = 20 + Math.random() * 22 + (1 - d / 100) * 8;
+    const l = look.l[0] + Math.random() * look.l[1] + (1 - d / 100) * 8;
     x.save(); x.translate(px, py); x.rotate(Math.random() * Math.PI * 2);
-    x.fillStyle = `hsl(${92 + Math.random() * 28}, ${32 + Math.random() * 18}%, ${l}%)`;
+    x.fillStyle = `hsl(${look.h[0] + Math.random() * look.h[1]}, ${look.s[0] + Math.random() * look.s[1]}%, ${l}%)`;
     x.beginPath(); x.ellipse(0, 0, len, len * 0.42, 0, 0, Math.PI * 2); x.fill();
     x.strokeStyle = 'rgba(20,40,10,0.35)'; x.lineWidth = 1.2; x.beginPath(); x.moveTo(-len, 0); x.lineTo(len, 0); x.stroke();
     x.restore();
@@ -138,7 +140,8 @@ function leafTexture() {
   const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 8;
   return t;
 }
-function makeTree(seed) {
+// cards: leaf cards per cluster, size: their half-size in metres (more, smaller cards = a finer, less blobby crown)
+function makeTree(seed, cards = 42, size = 0.55) {
   let s = seed; const rnd = () => ((s = (s * 16807) % 2147483647) / 2147483647);
   const H = 2.4 + rnd() * 0.6, crown = new THREE.Vector3(0, H + 1.7, 0);
   const wood = [];
@@ -160,11 +163,11 @@ function makeTree(seed) {
   const q = new THREE.Quaternion(), e = new THREE.Euler(), v = new THREE.Vector3(), n = new THREE.Vector3();
   for (const c of clusters) {
     const cr = 0.95 + rnd() * 0.4;
-    for (let k = 0; k < 42; k++) {
+    for (let k = 0; k < cards; k++) {
       const p = new THREE.Vector3(rnd() - 0.5, rnd() - 0.5, rnd() - 0.5).normalize().multiplyScalar(cr * Math.cbrt(rnd())).add(c);
       n.copy(p).sub(crown).normalize().multiplyScalar(0.7).add(v.copy(p).sub(c).normalize().multiplyScalar(0.3)).normalize();
       q.setFromEuler(e.set(rnd() * 6.28, rnd() * 6.28, rnd() * 6.28));
-      const sz = 0.55 + rnd() * 0.35, shade = 0.8 + rnd() * 0.3, base = pos.length / 3;
+      const sz = size + rnd() * size * 0.64, shade = 0.8 + rnd() * 0.3, base = pos.length / 3;
       for (const [ux, uy] of [[0, 0], [1, 0], [1, 1], [0, 1]]) {
         v.set((ux - 0.5) * sz * 2, (uy - 0.5) * sz * 2, 0).applyQuaternion(q).add(p);
         pos.push(v.x, v.y, v.z); nor.push(n.x, n.y, n.z); uv.push(ux, uy); col.push(shade, shade, shade);
@@ -180,14 +183,14 @@ function makeTree(seed) {
   leaves.setIndex(idx);
   return { leaves, wood: mergeGeometries(wood) };
 }
-// ground(x, z) -> height; refs: let the crossing's weather restyle the leaves
-export function trees(spots, ground = (x, z) => groundY(z), { refs = true } = {}) {
-  const leafMat = windy(new THREE.MeshStandardMaterial({ map: leafTexture(), alphaTest: 0.5, side: THREE.DoubleSide, vertexColors: true, roughness: 0.85 }), 0.1, 6);
-  const barkMat = new THREE.MeshStandardMaterial({ color: '#5e4a3a', roughness: 0.95 });
+// ground(x, z) -> height; refs: let the crossing's weather restyle the leaves; look/cards/size/bark: see above
+export function trees(spots, ground = (x, z) => groundY(z), { refs = true, look, cards, size, bark = '#5e4a3a' } = {}) {
+  const leafMat = windy(new THREE.MeshStandardMaterial({ map: leafTexture(look, look ? 140 : 70), alphaTest: 0.5, side: THREE.DoubleSide, vertexColors: true, roughness: 0.85 }), 0.1, 6);
+  const barkMat = new THREE.MeshStandardMaterial({ color: bark, roughness: 0.95 });
   if (refs) REFS.leaves.push(leafMat);
   leafMat.userData.dry = { color: leafMat.color.clone(), map: leafMat.map };
   const group = new THREE.Group();
-  [makeTree(7), makeTree(31)].forEach((t, v) => {
+  [makeTree(7, cards, size), makeTree(31, cards, size)].forEach((t, v) => {
     const ts = spots.filter((_, i) => i % 2 === v).map(([x, z, sc]) => place(x, z, sc).setPosition(x, ground(x, z), z));
     for (const [geo, mat] of [[t.leaves, leafMat], [t.wood, barkMat]]) {
       const im = new THREE.InstancedMesh(geo, mat, ts.length);

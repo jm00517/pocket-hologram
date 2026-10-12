@@ -392,17 +392,18 @@ export function createCitadel({ renderer, wind, ambient, key }) {
     const r = 1 + Math.random() ** 1.8 * 48, a = Math.random() * Math.PI * 2, x = Math.cos(a) * r, z = Math.sin(a) * r;
     const y = height(x, z);
     return z > 0.2 || y > 1.5 ? null : [x, y, z]; // not up the cliff face
-  }, (c) => c.setHSL(0.11 + Math.random() * 0.09, 0.28 + Math.random() * 0.18, 0.42 + Math.random() * 0.22)); // straw to olive
+  }, (c) => c.setHSL(0.09 + Math.random() * 0.06, 0.4 + Math.random() * 0.2, 0.62 + Math.random() * 0.2)); // straw to olive (the blades themselves are green: this pulls them to hay)
   grass.userData.noAO = true; g.add(grass);
   const spots = [[-15, -10, 1.3], [19, -24, 1.5], [-34, -46, 1.7], [40, -60, 1.6]];
   let s = 3; const rand = () => ((s = (s * 16807) % 2147483647) / 2147483647);
-  for (let k = 0; k < 18; k++) {
+  for (let k = 0; k < 7; k++) { // the Pelennor is open farmland: a few copses, not a woodland
     const gx = (rand() * 2 - 1) * 1300, gz = -90 - rand() * 1000;
     if (Math.hypot(gx - CITY.x, gz - CITY.z) < 760 || Math.abs(gz - riverZ(gx)) < 40) continue;
     for (let n = 3 + rand() * 9; n > 0; n--) spots.push([gx + (rand() - 0.5) * 60, gz + (rand() - 0.5) * 40, 1.4 + rand()]);
   }
-  for (let n = 0; n < 50; n++) { const x = (rand() * 2 - 1) * 1800; spots.push([x, riverZ(x) + (rand() < 0.5 ? -1 : 1) * (26 + rand() * 10), 1.3 + rand() * 0.8]); }
-  const grove = trees(spots, height, { refs: false });
+  for (let n = 0; n < 28; n++) { const x = (rand() * 2 - 1) * 1800; spots.push([x, riverZ(x) + (rand() < 0.5 ? -1 : 1) * (26 + rand() * 10), 1.3 + rand() * 0.8]); }
+  // dark, desaturated olive crowns of many small cards: the bright blobby anime trees fought the film grade
+  const grove = trees(spots, height, { refs: false, look: { h: [70, 30], s: [16, 16], l: [17, 18] }, cards: 90, size: 0.32, bark: '#3b3631' });
   const done = new Set(); grove.traverse((o) => { if (o.material && !done.has(o.material)) { done.add(o.material); wrap(o.material); } });
   grove.userData.noAO = true; g.add(grove);
   procedural.traverse((o) => { o.userData.noAO = true; });
