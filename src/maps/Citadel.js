@@ -1,4 +1,4 @@
-// Citadel meadow (성채의 초원): a windswept meadow on a brow above a farmed plain, and 1.3-1.5 km out a white city of
+// Citadel meadow (성채의 초원): a windswept meadow at the foot of a cliff on the edge of a farmed plain, and ~1.1 km out a white city of
 // seven walled tiers built into the shoulder of a mountain, split by a rock prow, a tower on the top tier, a sheer
 // stratified cliff behind it. Everything sits under the engine sky (engine/sky/): cloud shadows cross the fields,
 // the walls and the mountain; the time of day (citadel.elev) turns the walls gold, pink in the afterglow, then a
@@ -24,8 +24,8 @@ import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { createVolumetricSky, createSkyLights } from '../../engine/sky/VolumetricSky.js';
 import { grassField, trees, useWind, noInk } from './crossing/Foliage.js';
 
-const PLAIN = -26;                                   // the farmed plain below the meadow's brow
-const CITY = { x: -150, z: -1450, r: [300, 262, 224, 186, 148, 110, 74], rise: 34 };
+const PLAIN = -8;                                    // the farmed plain, just below her: she looks UP at the city
+const CITY = { x: -110, z: -1150, r: [300, 262, 224, 186, 148, 110, 74], rise: 34 };
 const top = (i) => PLAIN + CITY.rise * (i + 1);      // tier i's terrace height (the top tier is ~213 m up)
 const END_Z = -1980, SIDE = 3200;
 const TEX = 'assets/polyhaven/tex/';
@@ -40,7 +40,7 @@ function vnoise(x, z) {
 }
 const octaves = (f) => (x, z, o = 4) => { let a = 0, w = 0.5, s = 1; for (let k = 0; k < o; k++) { a += w * f(vnoise(x * s + k * 17.3, z * s)); s *= 2.03; w *= 0.5; } return a / (1 - 0.5 ** o); };
 const fbm = octaves((n) => n), ridged = octaves((n) => (1 - Math.abs(2 * n - 1)) ** 2);
-const riverZ = (x) => -640 + 70 * Math.sin(x / 260) + 30 * Math.sin(x / 97 + 1.3);
+const riverZ = (x) => -560 + 70 * Math.sin(x / 260) + 30 * Math.sin(x / 97 + 1.3);
 
 function height(x, z) {
   // meadow: rolling, flat where she stands, falling off the brow to the plain
@@ -53,13 +53,18 @@ function height(x, z) {
   // The shoulder the city is built into: a cliff rising right behind the top tiers, its foot fluted by gullies
   // (the noise shifts where the face starts along x, so the face reads as vertical ribs), flat-topped to the sides.
   const flute = 9 * ridged(x / 38, 0.5, 3) + 22 * fbm(x / 160, 7.1) + 6 * fbm(x / 21, 3.3);
-  const cliff = 560 * (1 - ss(z, CITY.z - 230 - flute, CITY.z - 70 - flute)) * Math.exp(-(((dx - 60) / 760) ** 4)) * (0.85 + 0.3 * fbm(x / 220, z / 220, 3));
+  const cliff = 480 * (1 - ss(z, CITY.z - 230 - flute, CITY.z - 70 - flute)) * Math.exp(-(((dx - 60) / 760) ** 4)) * (0.85 + 0.3 * fbm(x / 220, z / 220, 3));
   // the main ridge behind it (crest ~900 m), falling away to the right, and a range closing the horizon
   const rz = (z - CITY.z + 420) / 230, rx = (dx + 120) / 1300;
-  let m = 900 * Math.exp(-rz * rz - rx * rx * (dx > -120 ? 1 : 2.5)) * (0.7 + 0.45 * ridged(x / 300, z / 300, 5));
+  let m = 700 * Math.exp(-rz * rz - rx * rx * (dx > -120 ? 1 : 2.5)) * (0.7 + 0.45 * ridged(x / 300, z / 300, 5));
   m = Math.max(m, cliff, (330 + 260 * fbm(x / 520, 3.7)) * (1 - ss(z, -1900, -1700)) * (0.75 + 0.4 * ridged(x / 260, z / 260, 5)));
   m *= 0.93 + 0.14 * ridged(x / 110, z / 110, 4); // spurs and gullies everywhere on the rock
   m *= 1 - (1 - ss(cr, CITY.r[0] + 20, CITY.r[0] + 160)) * ss(z, CITY.z - 60, CITY.z + 10); // the city's bowl in its face
+  // The cliff she stands under: a dark rock wall ~190 m high down the right of the view, its face opening away
+  // from her so the plain and the city stay clear. In the window it climbs out of the top of the frame: the
+  // foreground scale that makes the city beyond read as huge.
+  const face = 46 + 0.12 * -z + 16 * (fbm(z / 26, 1.7) - 0.5), near = ss(z, -560, -380) * (1 - ss(z, 10, 40));
+  m = Math.max(m, 190 * ss(x, face, face + 13) * near * (0.8 + 0.4 * fbm(x / 40, z / 40, 3)) * (0.9 + 0.2 * ridged(x / 18, z / 18, 3)));
   return h + m;
 }
 
@@ -250,7 +255,7 @@ function city(mats, glowMat) {
 
 // the outer field wall: a low ring round the city across the plain, too long to take in, which is the point
 function fieldWall(mat) {
-  const r = 700, geo = new THREE.CylinderGeometry(r, r, 12, 256, 1, true, -1.25, 2.5);
+  const r = 500, geo = new THREE.CylinderGeometry(r, r, 12, 256, 1, true, -1.25, 2.5);
   const m = new THREE.Mesh(geo, mat); m.position.set(CITY.x, PLAIN + 1, CITY.z);
   return m;
 }
@@ -303,11 +308,11 @@ async function loadScan(wrap, glowMat, P) {
 // The scan's albedo carries the light it was photographed under. Divide by its own blurred copy (a deep mip) to
 // keep the carving and drop the lighting, then take only luminance and recolour it as limestone.
 function scanMaterial(src) {
-  const m = new THREE.MeshStandardMaterial({ map: src.map, color: '#efe6d3', roughness: 0.92, metalness: 0 });
+  const m = new THREE.MeshStandardMaterial({ map: src.map, color: '#e4dac6', roughness: 0.92, metalness: 0 });
   m.onBeforeCompile = (sh) => {
     sh.fragmentShader = sh.fragmentShader.replace('#include <map_fragment>', `#ifdef USE_MAP
         vec3 sc = texture2D(map, vMapUv).rgb, lo = textureLod(map, vMapUv, 6.0).rgb;
-        diffuseColor.rgb *= clamp(dot(sc / max(lo, vec3(0.03)), vec3(0.333)), 0.35, 1.6);
+        diffuseColor.rgb *= pow(clamp(dot(sc / max(lo, vec3(0.03)), vec3(0.333)), 0.3, 1.8), 1.5); // steeper: carved shadows read at 1 km
       #endif`);
   };
   m.customProgramCacheKey = () => 'citadel-scan';
@@ -325,7 +330,7 @@ export function createCitadel({ renderer, wind, ambient, key }) {
   const lights = createSkyLights(sky, { ambient, key });
   g.add(sky.dome, lights.group);
 
-  const P = { aerial: 0.3, mist: 1, lights: 1, scanYaw: -45, scanHeight: 340, scanSink: 72, scanBack: 40 }; // scan defaults fit the 3digify Sketchfab scan (512b6293): prow edge-on to the meadow, pedestal buried
+  const P = { aerial: 0.3, mist: 1, lights: 1, scanYaw: -45, scanHeight: 470, scanSink: 100, scanBack: 55 }; // scan defaults fit the 3digify Sketchfab scan (512b6293): prow edge-on to the meadow, pedestal buried
   // mist pooled on the plain: optical depth of a straight ray through an exponential layer (scale height 40 m)
   // above the plain, so the city's foot sits in it and the top tiers stay crisp; the near meadow is too short a ray
   const MIST = { uMist: { value: 0 }, uMistCol: { value: new THREE.Color() }, uMistH: { value: 40 }, uMistBase: { value: PLAIN } };
@@ -373,7 +378,8 @@ export function createCitadel({ renderer, wind, ambient, key }) {
   // None on the viewer's side of the glass (z > 0.4 m): those blades would stand inches from the eye.
   const grass = grassField(14000, () => {
     const r = 1 + Math.random() ** 1.8 * 48, a = Math.random() * Math.PI * 2, x = Math.cos(a) * r, z = Math.sin(a) * r;
-    return z > 0.2 ? null : [x, height(x, z), z];
+    const y = height(x, z);
+    return z > 0.2 || y > 1.5 ? null : [x, y, z]; // not up the cliff face
   });
   grass.userData.noAO = true; g.add(grass);
   const spots = [[-15, -10, 1.3], [19, -24, 1.5], [-34, -46, 1.7], [40, -60, 1.6]];
