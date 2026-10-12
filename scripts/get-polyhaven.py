@@ -18,7 +18,8 @@ HDRIS = {  # weather preset -> pure-sky HDRI (no ground, so our scene's horizon 
 }
 TEXTURES = ['asphalt_02', 'sandy_gravel_02', 'sparse_grass', 'snow_02', 'white_plaster_02',
             'concrete_floor_worn_001', 'rusty_metal_02', 'grey_roof_tiles_02',
-            'plank_flooring_02', 'plastered_wall_04']  # last two: the after-school classroom
+            'plank_flooring_02', 'plastered_wall_04',  # the after-school classroom
+            'rock_face_03', 'aerial_grass_rock', 'castle_brick_02_white']  # the citadel
 MAPS = {'diff': 'Diffuse', 'nor_gl': 'nor_gl', 'rough': 'Rough'}
 MODELS = ['fern_02', 'weed_plant_02', 'shrub_sorrel_01', 'shrub_04', 'dandelion_01', 'wall_clock']  # glTF 1k
 

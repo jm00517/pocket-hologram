@@ -21,7 +21,7 @@ from a CDN importmap (`index.html`).
 | `voice/v6_speech.py` | Japanese speech through the local VOCALOID6 Hatsune Miku V6 model: one note per mora, accent from `teto_tts`. Needs the headless synth CLI (`V6_SYNTH`) and the installed licences; not redistributed. |
 | `voice/teto_tts.py` | Japanese concatenative TTS on the local Kasane Teto UTAU bank (pyopenjtalk accent, WORLD re-pitch). Not redistributed. |
 | `voice/vpr_speech.py` | Hiragana -> VOCALOID6 `.vpr` project that speaks it, for the editor. |
-| `assets/` | Gitignored except `assets/models/` (CC-BY props, credits in `CREDITS.txt`). |
+| `assets/` | Gitignored except `assets/models/` (CC-BY props, credits in `CREDITS.txt`). A scanned city at `assets/sketchfab/minas_tirith/scene.glb` (local only) replaces the citadel's procedural one (`citadel.scan*` params). |
 
 ## Run and verify
 
