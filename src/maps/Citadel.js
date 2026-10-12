@@ -1,4 +1,4 @@
-// Citadel meadow (성채의 초원): a windswept meadow at the foot of a cliff on the edge of a farmed plain, and ~800 m out a white city of
+// Citadel meadow (성채의 초원): a windswept meadow at the foot of a cliff on the edge of a farmed plain, and ~1-1.5 km out a white city of
 // seven walled tiers built into the shoulder of a mountain, split by a rock prow, a tower on the top tier, a sheer
 // stratified cliff behind it. Everything sits under the engine sky (engine/sky/): cloud shadows cross the fields,
 // the walls and the mountain; the time of day (citadel.elev) turns the walls gold, pink in the afterglow, then a
@@ -7,7 +7,7 @@
 // What makes it read as huge (art direction argued out with a second model, see the commit):
 // - a mass, not a cake: on every terrace the back rows of houses rise past the foot of the next wall, so the
 //   roofscape fills the risers; wall towers, a parapet lip and alternating gates break each ring;
-// - built INTO the mountain: a cliff ~3x the city's height right behind it, snow above, gullies down its face;
+// - the city IS the mountain's prow: it juts out of a mountain wall, shoulders closing in on both flanks;
 // - a ruler in front: hedged field parcels on the plain and an outer field wall (the scale cue);
 // - raking light from the right (never frontal) so each curved tier grades from lit to shade;
 // - mist pooled on the plain (citadel.mist) so the city rises out of it while the top tiers stay crisp.
@@ -25,9 +25,9 @@ import { createVolumetricSky, createSkyLights } from '../../engine/sky/Volumetri
 import { grassField, trees, useWind, noInk } from './crossing/Foliage.js';
 
 const PLAIN = -8;                                    // the farmed plain, just below her: she looks UP at the city
-const CITY = { x: -80, z: -800, r: [300, 262, 224, 186, 148, 110, 74], rise: 34 };
+const CITY = { x: -80, z: -1450, r: [300, 262, 224, 186, 148, 110, 74], rise: 34 };
 const top = (i) => PLAIN + CITY.rise * (i + 1);      // tier i's terrace height (the top tier is ~213 m up)
-const END_Z = -1980, SIDE = 3200;
+const END_Z = -2300, SIDE = 3200; // the massif's back reaches ~2.35 km, just inside the far plane
 const TEX = 'assets/polyhaven/tex/';
 const ss = THREE.MathUtils.smoothstep;
 
@@ -50,16 +50,14 @@ function height(x, z) {
   h -= 2.6 * (1 - ss(Math.abs(z - riverZ(x)), 9, 34)) * (1 - brow);
   const dx = x - CITY.x, cr = Math.hypot(dx, z - CITY.z);
   h += (PLAIN - h) * (1 - ss(cr, CITY.r[0] + 10, CITY.r[0] + 90)); // the city stands on a level pad
-  // The shoulder the city is built into: a cliff rising right behind the top tiers, its foot fluted by gullies
-  // (the noise shifts where the face starts along x, so the face reads as vertical ribs), flat-topped to the sides.
-  const flute = 9 * ridged(x / 38, 0.5, 3) + 22 * fbm(x / 160, 7.1) + 6 * fbm(x / 21, 3.3);
-  const cliff = 480 * (1 - ss(z, CITY.z - 230 - flute, CITY.z - 70 - flute)) * Math.exp(-(((dx - 60) / 760) ** 4)) * (0.85 + 0.3 * fbm(x / 220, z / 220, 3));
-  // the main ridge behind it (crest ~900 m), falling away to the right, and a range closing the horizon
-  const rz = (z - CITY.z + 420) / 230, rx = (dx + 120) / 1300;
-  let m = 700 * Math.exp(-rz * rz - rx * rx * (dx > -120 ? 1 : 2.5)) * (0.7 + 0.45 * ridged(x / 300, z / 300, 5));
-  m = Math.max(m, cliff, (330 + 260 * fbm(x / 520, 3.7)) * (1 - ss(z, -1900, -1700)) * (0.75 + 0.4 * ridged(x / 260, z / 260, 5)));
+  // The city is the mountain's prow: it juts out of a mountain wall. The wall rises behind the city's middle,
+  // shoulders close in on both flanks (they also hide the scan's straight-cut sides), and a lower range runs
+  // off along the horizon. The scan's own rock is the centre of the massif.
+  const back = 1 - ss(z, CITY.z - 520, CITY.z - 300);
+  let m = (520 + 300 * Math.exp(-((dx / 900) ** 2))) * back * (0.8 + 0.35 * ridged(x / 260, z / 260, 5));
+  const shoulder = 560 * ss(Math.abs(dx), 520, 760) * (1 - ss(z, CITY.z - 100, CITY.z + 320)) * Math.exp(-(((Math.abs(dx) - 800) / 700) ** 2));
+  m = Math.max(m, shoulder * (0.8 + 0.35 * ridged(x / 200, z / 200, 5)), (330 + 260 * fbm(x / 520, 3.7)) * (1 - ss(z, -1900, -1700)) * (0.75 + 0.4 * ridged(x / 260, z / 260, 5)));
   m *= 0.93 + 0.14 * ridged(x / 110, z / 110, 4); // spurs and gullies everywhere on the rock
-  m *= 1 - (1 - ss(cr, CITY.r[0] + 20, CITY.r[0] + 160)) * ss(z, CITY.z - 60, CITY.z + 10); // the city's bowl in its face
   // The cliff she stands under: a dark rock wall ~190 m high down the right of the view, its face opening away
   // from her so the plain and the city stay clear. In the window it climbs out of the top of the frame: the
   // foreground scale that makes the city beyond read as huge.
@@ -255,7 +253,7 @@ function city(mats, glowMat) {
 
 // the outer field wall: a low ring round the city across the plain, too long to take in, which is the point
 function fieldWall(mat) {
-  const r = 420, geo = new THREE.CylinderGeometry(r, r, 12, 256, 1, true, -1.25, 2.5);
+  const r = 760, geo = new THREE.CylinderGeometry(r, r, 12, 256, 1, true, -1.25, 2.5);
   const m = new THREE.Mesh(geo, mat); m.position.set(CITY.x, PLAIN + 1, CITY.z);
   return m;
 }
@@ -311,8 +309,12 @@ function scanMaterial(src) {
   const m = new THREE.MeshStandardMaterial({ map: src.map, color: '#e4dac6', roughness: 0.92, metalness: 0 });
   m.onBeforeCompile = (sh) => {
     sh.fragmentShader = sh.fragmentShader.replace('#include <map_fragment>', `#ifdef USE_MAP
-        vec3 sc = texture2D(map, vMapUv).rgb, lo = textureLod(map, vMapUv, 6.0).rgb;
-        diffuseColor.rgb *= pow(clamp(dot(sc / max(lo, vec3(0.03)), vec3(0.333)), 0.3, 1.8), 1.5); // steeper: carved shadows read at 1 km
+        vec3 sc = texture2D(map, vMapUv).rgb, lo = textureLod(map, vMapUv, 6.0).rgb, mid = textureLod(map, vMapUv, 4.0).rgb;
+        float carve = pow(clamp(dot(sc / max(lo, vec3(0.03)), vec3(0.333)), 0.3, 1.8), 1.5); // steeper: carved shadows read at 1 km
+        // the statue's rock is painted greener than its masonry (green/luminance ~0.24-0.32 vs ~0.17, measured):
+        // that rock becomes the mountain's dark stone, the buildings stay pale limestone
+        float lm = dot(mid, vec3(0.333)), rock = smoothstep(0.175, 0.215, (mid.g - 0.5 * (mid.r + mid.b)) / max(lm, 0.01));
+        diffuseColor.rgb *= carve * mix(vec3(1.0), vec3(0.36, 0.35, 0.33), rock);
       #endif`);
   };
   m.customProgramCacheKey = () => 'citadel-scan';
@@ -330,7 +332,7 @@ export function createCitadel({ renderer, wind, ambient, key }) {
   const lights = createSkyLights(sky, { ambient, key });
   g.add(sky.dome, lights.group);
 
-  const P = { aerial: 0.3, mist: 1, lights: 1, scanYaw: -45, scanHeight: 470, scanSink: 100, scanBack: 55 }; // scan defaults fit the 3digify Sketchfab scan (512b6293): prow edge-on to the meadow, pedestal buried
+  const P = { aerial: 0.3, mist: 1, lights: 1, scanYaw: -45, scanHeight: 1150, scanSink: 245, scanBack: 0 }; // scan defaults fit the 3digify Sketchfab scan (512b6293): prow edge-on to the meadow, pedestal buried
   // mist pooled on the plain: optical depth of a straight ray through an exponential layer (scale height 40 m)
   // above the plain, so the city's foot sits in it and the top tiers stay crisp; the near meadow is too short a ray
   const MIST = { uMist: { value: 0 }, uMistCol: { value: new THREE.Color() }, uMistH: { value: 40 }, uMistBase: { value: PLAIN } };
