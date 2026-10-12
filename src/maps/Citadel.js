@@ -1,4 +1,4 @@
-// Citadel meadow (성채의 초원): a windswept meadow at the foot of a cliff on the edge of a farmed plain, and ~1.1 km out a white city of
+// Citadel meadow (성채의 초원): a windswept meadow at the foot of a cliff on the edge of a farmed plain, and ~800 m out a white city of
 // seven walled tiers built into the shoulder of a mountain, split by a rock prow, a tower on the top tier, a sheer
 // stratified cliff behind it. Everything sits under the engine sky (engine/sky/): cloud shadows cross the fields,
 // the walls and the mountain; the time of day (citadel.elev) turns the walls gold, pink in the afterglow, then a
@@ -25,7 +25,7 @@ import { createVolumetricSky, createSkyLights } from '../../engine/sky/Volumetri
 import { grassField, trees, useWind, noInk } from './crossing/Foliage.js';
 
 const PLAIN = -8;                                    // the farmed plain, just below her: she looks UP at the city
-const CITY = { x: -110, z: -1150, r: [300, 262, 224, 186, 148, 110, 74], rise: 34 };
+const CITY = { x: -80, z: -800, r: [300, 262, 224, 186, 148, 110, 74], rise: 34 };
 const top = (i) => PLAIN + CITY.rise * (i + 1);      // tier i's terrace height (the top tier is ~213 m up)
 const END_Z = -1980, SIDE = 3200;
 const TEX = 'assets/polyhaven/tex/';
@@ -40,7 +40,7 @@ function vnoise(x, z) {
 }
 const octaves = (f) => (x, z, o = 4) => { let a = 0, w = 0.5, s = 1; for (let k = 0; k < o; k++) { a += w * f(vnoise(x * s + k * 17.3, z * s)); s *= 2.03; w *= 0.5; } return a / (1 - 0.5 ** o); };
 const fbm = octaves((n) => n), ridged = octaves((n) => (1 - Math.abs(2 * n - 1)) ** 2);
-const riverZ = (x) => -560 + 70 * Math.sin(x / 260) + 30 * Math.sin(x / 97 + 1.3);
+const riverZ = (x) => -330 + 70 * Math.sin(x / 260) + 30 * Math.sin(x / 97 + 1.3);
 
 function height(x, z) {
   // meadow: rolling, flat where she stands, falling off the brow to the plain
@@ -255,7 +255,7 @@ function city(mats, glowMat) {
 
 // the outer field wall: a low ring round the city across the plain, too long to take in, which is the point
 function fieldWall(mat) {
-  const r = 500, geo = new THREE.CylinderGeometry(r, r, 12, 256, 1, true, -1.25, 2.5);
+  const r = 420, geo = new THREE.CylinderGeometry(r, r, 12, 256, 1, true, -1.25, 2.5);
   const m = new THREE.Mesh(geo, mat); m.position.set(CITY.x, PLAIN + 1, CITY.z);
   return m;
 }
