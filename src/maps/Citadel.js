@@ -13,6 +13,8 @@
 // - mist pooled on the plain (citadel.mist) so the city rises out of it while the top tiers stay crisp.
 // If a photogrammetry city is dropped in assets/sketchfab/minas_tirith/scene.glb (or .gltf) it replaces the
 // procedural one: its baked scan light is filtered out in the shader (the texture's own mip is the blur).
+// The scan the defaults are fitted to (scanYaw/Sink/Back): "Scanned Minas Tirith Model (Lord of the Rings)" by 3digify,
+// CC BY 4.0, https://sketchfab.com/3d-models/512b6293f38540be963dcdcbfd8bc7c5 (fetched locally, never committed).
 //
 // Metres, stage origin at her feet, -z away from the viewer. The far plane is ~2.4 km at the usual U, so the world
 // ends at 2 km behind the range.
@@ -267,7 +269,7 @@ async function loadScan(wrap, glowMat, P) {
     const place = () => {
       pivot.scale.setScalar(P.scanHeight / size.y);
       pivot.rotation.y = THREE.MathUtils.degToRad(P.scanYaw);
-      pivot.position.set(CITY.x, PLAIN - P.scanSink, CITY.z);
+      pivot.position.set(CITY.x, PLAIN - P.scanSink, CITY.z - P.scanBack);
     };
     place();
     root.traverse((o) => {
@@ -288,10 +290,12 @@ async function loadScan(wrap, glowMat, P) {
         if (n.z > 0.6 && Math.abs(n.y) < 0.4 && a.y > PLAIN + 8) spots.push(new THREE.Matrix4().lookAt(new THREE.Vector3(), n, new THREE.Vector3(0, 1, 0)).setPosition(a.add(b).add(cc).divideScalar(3).addScaledVector(n, 0.4)));
       }
     });
-    const pick = spots.sort(() => Math.random() - 0.5).slice(0, 900);
+    const pick = spots.sort(() => Math.random() - 0.5).slice(0, 900), toPivot = pivot.matrixWorld.clone().invert();
+    // in the pivot's frame (the instance matrices carry the inverse scale), so the windows turn and scale with the city
     const glow = new THREE.InstancedMesh(new THREE.PlaneGeometry(2.2, 1.8).rotateY(Math.PI), glowMat, pick.length);
-    pick.forEach((m, k) => glow.setMatrixAt(k, m));
-    const g = new THREE.Group(); g.add(pivot, glow);
+    pick.forEach((m, k) => glow.setMatrixAt(k, m.premultiply(toPivot)));
+    pivot.add(glow);
+    const g = new THREE.Group(); g.add(pivot);
     return { group: g, place };
   }
   return null;
@@ -321,7 +325,7 @@ export function createCitadel({ renderer, wind, ambient, key }) {
   const lights = createSkyLights(sky, { ambient, key });
   g.add(sky.dome, lights.group);
 
-  const P = { aerial: 0.3, mist: 1, lights: 1, scanYaw: 0, scanHeight: 340, scanSink: 14 };
+  const P = { aerial: 0.3, mist: 1, lights: 1, scanYaw: -45, scanHeight: 340, scanSink: 72, scanBack: 40 }; // scan defaults fit the 3digify Sketchfab scan (512b6293): prow edge-on to the meadow, pedestal buried
   // mist pooled on the plain: optical depth of a straight ray through an exponential layer (scale height 40 m)
   // above the plain, so the city's foot sits in it and the top tiers stay crisp; the near meadow is too short a ray
   const MIST = { uMist: { value: 0 }, uMistCol: { value: new THREE.Color() }, uMistH: { value: 40 }, uMistBase: { value: PLAIN } };
@@ -402,7 +406,8 @@ export function createCitadel({ renderer, wind, ambient, key }) {
       num('lights', '성의 불빛', 'Brightness of the lit windows in the city after sunset.', 0, 4, 0.05),
       num('scanYaw', '스캔 방향', 'Only with a scanned city in assets/sketchfab/minas_tirith/: its rotation (deg) so the gate faces the meadow.', -180, 180, 1, replace),
       num('scanHeight', '스캔 높이', 'Only with a scanned city: its height in metres, base to the tower tip.', 150, 600, 1, replace),
-      num('scanSink', '스캔 매몰', 'Only with a scanned city: metres sunk into the plain (buries a display pedestal).', 0, 120, 0.5, replace),
+      num('scanSink', '스캔 매몰', 'Only with a scanned city: metres sunk into the plain (buries a display pedestal).', 0, 160, 0.5, replace),
+      num('scanBack', '스캔 깊이', 'Only with a scanned city: metres pushed back toward the mountain, so its own rock spur sinks into the cliff.', -200, 400, 1, replace),
     ],
     sky,
     async fit(scene, U) {
