@@ -115,12 +115,16 @@ function terrain() {
       .replace('#include <begin_vertex>', '#include <begin_vertex>\nvRock = aRock; vLocal = position; vNrm = normal;');
     sh.fragmentShader = sh.fragmentShader.replace('#include <common>', `#include <common>
         uniform sampler2D tGrass, tField, tRock; uniform vec4 uRoad; varying float vRock; varying vec3 vLocal, vNrm;
+        const vec3 LAWN = vec3(0.46, 0.54, 0.27); // blade colour / MEADOW (tip x straw paint, measured by eye)
         ${LUM}
         float h21(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }`)
       .replace('#include <map_fragment>', `{
         vec2 p = vLocal.xz; float far = smoothstep(60.0, 250.0, length(p));
         float g = mix(lum(texture2D(tGrass, p / 6.0).rgb) / 0.045, 1.0, far) * mix(1.0, lum(texture2D(tField, p / 45.0).rgb) / 0.106, 0.7);
-        vec3 ground = vec3(g);
+        // under the blades the soil takes their colour and loses the dirt photo's contrast, so the grass thinning
+        // with distance reads as a lawn going flat, not as tufts on bare earth
+        float lawn = 1.0 - smoothstep(30.0, 110.0, length(p));
+        vec3 ground = mix(vec3(g), LAWN * mix(1.0, g, 0.35), lawn);
         // the plain is farmed: hedged parcels, some green, some gold, that make the city's size readable
         float plain = 1.0 - smoothstep(-450.0, -150.0, vLocal.z);
         vec2 q = mat2(0.94, -0.34, 0.34, 0.94) * p, cs = vec2(70.0, 46.0); q.x += h21(vec2(0.0, floor(q.y / cs.y))) * cs.x; cs.x *= 0.7 + 0.6 * h21(vec2(floor(q.y / cs.y), 3.0));
@@ -310,7 +314,7 @@ async function loadScan(wrap, glowMat, P) {
 // The scan's albedo carries the light it was photographed under. Divide by its own blurred copy (a deep mip) to
 // keep the carving and drop the lighting, then take only luminance and recolour it as limestone.
 function scanMaterial(src) {
-  const m = new THREE.MeshStandardMaterial({ map: src.map, color: '#dedbd2', roughness: 0.92, metalness: 0 });
+  const m = new THREE.MeshStandardMaterial({ map: src.map, color: '#bdbab3', roughness: 0.92, metalness: 0 });
   m.onBeforeCompile = (sh) => {
     sh.fragmentShader = sh.fragmentShader.replace('#include <map_fragment>', `#ifdef USE_MAP
         vec3 sc = texture2D(map, vMapUv).rgb, lo = textureLod(map, vMapUv, 6.0).rgb, mid = textureLod(map, vMapUv, 4.0).rgb;
@@ -342,7 +346,7 @@ export function createCitadel({ renderer, wind, ambient, key }) {
   const lights = createSkyLights(sky, { ambient, key });
   g.add(sky.dome, lights.group);
 
-  const P = { aerial: 0.3, mist: 1, lights: 1, scanYaw: -45, scanHeight: 1150, scanSink: 245, scanBack: 0 }; // scan defaults fit the 3digify Sketchfab scan (512b6293): prow edge-on to the meadow, pedestal buried
+  const P = { aerial: 0.3, mist: 2, lights: 1, scanYaw: -45, scanHeight: 1150, scanSink: 245, scanBack: 0 }; // scan defaults fit the 3digify Sketchfab scan (512b6293): prow edge-on to the meadow, pedestal buried
   // mist pooled on the plain: optical depth of a straight ray through an exponential layer (scale height 40 m)
   // above the plain, so the city's foot sits in it and the top tiers stay crisp; the near meadow is too short a ray
   const MIST = { uMist: { value: 0 }, uMistCol: { value: new THREE.Color() }, uMistH: { value: 40 }, uMistBase: { value: PLAIN } };
