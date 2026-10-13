@@ -184,7 +184,7 @@ export function hyperGarden(g, anchor, layer) {
       mat.uniforms.uV.value.copy(V);
     },
     /** where you stand in the room you came in by: [x, z] metres from its centre, and how you're turned (rad) */
-    inEntry() {
+    where() {
       const Q = exitT.clone().invert().multiply(vi.copy(V).invert()), p = O.clone().applyMatrix3(Q), [x, z] = logm(p);
       const R = boost(x / RC, z / RC).invert().multiply(Q), phi = Math.atan2(R.elements[1], R.elements[0]);
       return { x, z, phi, near: -lor(p, O) < Math.cosh(1.5 * INR) };
