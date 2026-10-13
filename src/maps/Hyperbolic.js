@@ -123,6 +123,44 @@ const FRAG = /* glsl */`
     #include <colorspace_fragment>
   }`;
 
+// her statues: a vertex in her own metres (feet at the origin) is placed in its room's tangent plane, then sent
+// up to the hyperboloid and drawn like everything else; her normal is pushed through the same map
+const CROWD_VERT = /* glsl */`
+  attribute vec3 iL0, iL1, iL2, iPlace; // the room; x, z in it (m), turn
+  uniform mat3 uV; uniform vec3 uAnchor; uniform float uRc;
+  varying vec2 vUv; varying vec3 vN, vLocal; varying float vDist;
+  vec3 lmap(vec2 xz, float y, mat3 M) {
+    float l = length(xz), r = l / uRc;
+    vec3 p = M * vec3(l > 1e-7 ? sinh(r) * xz / l : vec2(0.0), cosh(r));
+    float d = acosh(max(p.z, 1.0)), s = length(p.xy);
+    vec2 t = s > 1e-6 ? p.xy / s * d * uRc : vec2(0.0);
+    return vec3(t.x, y, t.y);
+  }
+  void main() {
+    mat3 M = uV * mat3(iL0, iL1, iL2);
+    float c = cos(iPlace.z), s = sin(iPlace.z);
+    mat2 R = mat2(c, -s, s, c);
+    vec2 xz = R * position.xz + iPlace.xy;
+    vec3 q = lmap(xz, position.y, M), q2 = lmap(xz + 0.02 * (R * normal.xz), position.y, M);
+    vN = vec3((q2.x - q.x) / 0.02, normal.y, (q2.z - q.z) / 0.02);
+    vUv = uv; vLocal = uAnchor + q; vDist = length(q.xz);
+    gl_Position = projectionMatrix * viewMatrix * modelMatrix * vec4(vLocal, 1.0);
+  }`;
+const CROWD_FRAG = /* glsl */`
+  uniform sampler2D map; uniform float hasMap, cut; uniform vec3 color, glow, uFog, uSun;
+  varying vec2 vUv; varying vec3 vN, vLocal; varying float vDist;
+  void main() {
+    vec4 tx = hasMap > 0.5 ? texture2D(map, vUv) : vec4(1.0);
+    if (tx.a < cut) discard;
+    float l = dot(normalize(vN), uSun); // toon: two bands, like her own shading
+    vec3 col = color * tx.rgb * mix(0.62, 1.0, smoothstep(-0.05, 0.12, l)) + glow * 0.4;
+    col = mix(col, uFog, smoothstep(14.0, 30.0, vDist));
+    gl_FragColor = vec4(col, 1.0);
+    #include <tonemapping_fragment>
+    #include <colorspace_fragment>
+  }`;
+const MAX_CROWD = 128;
+
 /** anchor: where tile space is drawn (map metres); layer: camera layer */
 export function hyperGarden(g, anchor, layer) {
   const mat = new THREE.ShaderMaterial({ vertexShader: VERT, fragmentShader: FRAG, side: THREE.DoubleSide,
@@ -150,24 +188,65 @@ export function hyperGarden(g, anchor, layer) {
       const [L, d] = queue.shift(), k = key(L);
       if (seen.has(k)) continue;
       const color = carry.get(k) ?? new THREE.Color().setHSL((hue = (hue + 0.618034) % 1), 0.45, 0.62);
-      seen.set(k, true); out.push({ L, color });
+      seen.set(k, true); out.push({ L, color, d });
       if (d < DEPTH) for (const Nb of NEIGH) queue.push([L.clone().multiply(Nb), d + 1]);
     }
     out.forEach((t, i) => setInst(tiles, i, t.L, t.color));
     tiles.geometry.instanceCount = out.length;
     for (const a of ['iL0', 'iL1', 'iL2', 'iColor']) tiles.geometry.attributes[a].needsUpdate = true;
     list = out;
+    placeCrowd();
   }
   const updateCurtain = () => {
     setInst(curtain, 0, exitT, new THREE.Color(1, 1, 1)); curtain.geometry.instanceCount = 1;
     for (const a of ['iL0', 'iL1', 'iL2']) curtain.geometry.attributes[a].needsUpdate = true;
   };
+  // the crowd: statues of her in the rooms within crowd.depth, crowd.per room each, at the corners (the gaps stay
+  // clear); which pose, which corner and which way she faces come from the room's colour, so a room keeps its own
+  const crowd = { poses: [], meshes: [], per: 2, depth: 2 }, mats = new Map();
+  const crowdMat = (m) => mats.get(m) ?? mats.set(m, new THREE.ShaderMaterial({ vertexShader: CROWD_VERT, fragmentShader: CROWD_FRAG, side: m.side,
+    uniforms: { uV: mat.uniforms.uV, uAnchor: mat.uniforms.uAnchor, uRc: mat.uniforms.uRc, uFog: mat.uniforms.uFog, uSun: mat.uniforms.uSun,
+      map: { value: m.map ?? null }, hasMap: { value: m.map ? 1 : 0 }, color: { value: (m.color ?? new THREE.Color(1, 1, 1)).clone() },
+      glow: { value: (m.emissive ?? new THREE.Color(0, 0, 0)).clone() }, cut: { value: m.transparent || m.alphaTest ? Math.max(m.alphaTest, 0.4) : 0.01 } } })).get(m);
+  function placeCrowd() {
+    const n = crowd.meshes.length;
+    if (!n) return;
+    const count = new Array(n).fill(0);
+    for (const t of list) {
+      if (t.d > crowd.depth) break; // breadth-first: the rest are farther
+      for (let k = 0; k < crowd.per; k++) {
+        let h = Math.imul(t.color.getHex() ^ Math.imul(k + 1, 0x9e3779b9), 0x85ebca6b); h = Math.imul(h ^ (h >>> 13), 0xc2b2ae35); h = (h ^ (h >>> 16)) >>> 0;
+        const pi = h % n, m = crowd.meshes[pi];
+        if (count[pi] >= MAX_CROWD) continue;
+        const corner = (h >>> 8) % N, a = MID(corner) + Math.PI / N + (((h >>> 16) % 100) / 100 - 0.5) * 0.3, r = 2.6 + ((h >>> 12) % 50) / 100;
+        const at = m.geometry.attributes, i = count[pi]++, e = t.L.elements;
+        for (let c = 0; c < 3; c++) at[`iL${c}`].setXYZ(i, e[c * 3], e[c * 3 + 1], e[c * 3 + 2]);
+        at.iPlace.setXYZ(i, Math.cos(a) * r, Math.sin(a) * r, ((h >>> 20) % 628) / 100);
+      }
+    }
+    crowd.meshes.forEach((m, i) => { m.geometry.instanceCount = count[i]; for (const a of ['iL0', 'iL1', 'iL2', 'iPlace']) m.geometry.attributes[a].needsUpdate = true; });
+  }
+  function setCrowd(poses) {
+    for (const m of crowd.meshes) { g.remove(m); m.geometry.dispose(); }
+    crowd.meshes = poses.map(({ geometry, materials }) => {
+      const ig = new THREE.InstancedBufferGeometry().copy(geometry); ig.instanceCount = 0;
+      for (const a of ['iL0', 'iL1', 'iL2', 'iPlace']) ig.setAttribute(a, new THREE.InstancedBufferAttribute(new Float32Array(MAX_CROWD * 3), 3));
+      const m = new THREE.Mesh(ig, materials.map(crowdMat)); m.frustumCulled = false; m.layers.set(layer); m.userData.noAO = true; g.add(m);
+      return m;
+    });
+    placeCrowd();
+  }
+
   const reset = () => { V.identity(); exitT.identity(); regenerate(); updateCurtain(); mat.uniforms.uV.value.copy(V); };
   reset();
 
   const vi = new THREE.Matrix3(), O = new THREE.Vector3(0, 0, 1), c = new THREE.Vector3();
   return {
     reset,
+    /** her statues: [{ geometry, materials }] from bakePoses */
+    setCrowd,
+    crowd,
+    placeCrowd,
     /** the eye stepped (dx, dz) metres in the anchor's frame: fold it into V; rebase when you enter another room */
     step(dx, dz) {
       if (dx || dz) V.premultiply(boost(-dx / RC, -dz / RC));

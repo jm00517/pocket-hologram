@@ -66,6 +66,9 @@ export class Character {
     this.helper.add(this.mesh, { animation: [base], physics: await physics });
     this.mixer = this.helper.objects.get(this.mesh).mixer;
     this.current = this.actions[IDLE_POSE] = this.mixer.clipAction(base);
+    // her motions, for whoever wants her poses (the hyperbolic garden's crowd); not enumerable, since three
+    // copies userData through JSON when the mesh is cloned and the actions point back at the mesh
+    Object.defineProperty(this.mesh.userData, 'actions', { value: this.actions, configurable: true });
     for (const a of Object.values(this.actions)) a.setEffectiveWeight(a === this.current ? 1 : 0);
     // Procedural layer runs right after the mixer, before IK/physics, so hair and skirt react to it.
     const update = this.mixer.update.bind(this.mixer);

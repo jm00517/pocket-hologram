@@ -90,6 +90,8 @@ export function createEngine({ canvas, far = 30000, maxPixelRatio = 2 } = {}) {
     fade(s, v, dt, tau = 1.5) { const g = s.getVolume(); s.setVolume(g + (v - g) * (1 - Math.exp(-dt / tau))); },
     /** something happened in the map worth a look (a train, a chime): { p: stage metres, label, line?, gesture? } -> 'cue' event */
     cue(c) { emit('cue', { ...c, p: toWorld(c.p) }); },
+    /** the character (setSubject), or null: a map may borrow its look (never move or reparent it) */
+    get subject() { return subject; },
   };
 
   const coreParams = [

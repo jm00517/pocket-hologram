@@ -16,6 +16,7 @@ import { loadSky } from '../../engine/index.js';
 import { trees, useWind, noInk } from './crossing/Foliage.js';
 import { hyperGarden, DOOR_DIST } from './Hyperbolic.js';
 import { smallPlanet, SDOOR } from './Spherical.js';
+import { bakePoses } from './PoseBake.js';
 
 const MAIN = 0, HALL = 10, ISLAND = 11, CORR = 12, GRAV = 13, HYP = 14, SPH = 15; // camera layers (1 and 2 are three's per-eye layers in VR)
 // CORR, GRAV: the torii corridor / the turning corridor alone (also in MAIN), for their recursion. Seen from k x 6 m back, an oblique near plane drags
@@ -26,6 +27,9 @@ const F = (x, y, z, ry = 0, rz = 0, s = 1) => new THREE.Matrix4().compose(new TH
 // door frames (door space: opening centred on the origin, facing +z)
 const ALICE = F(-5.98, 1.05, 1.5, Math.PI / 2), DOLL = F(-0.8, 0.105, 0.8, 0, 0, 0.1); // a normal door -> one a tenth that size
 const DIORAMA = F(-4.3, 1.18, -3.29), FRONT = F(0, 2.1, 4.99, 0, 0, 20); // the box's 60 x 21 cm glass -> the 12 x 4.2 m front wall
+// her statues in the garden: a moment from each of these motions (name, phase); the ones she has loaded are used
+const STATUES = [['wave', 0.4], ['g_cheer', 0.5], ['g_clap', 0.45], ['g_shy', 0.5], ['g_shystand', 0.6], ['stretch', 0.45], ['fixhair', 0.5],
+  ['hi', 0.4], ['bow', 0.45], ['raise', 0.5], ['call', 0.5], ['guide', 0.4], ['shyidle', 0.5], ['confident', 0.5], ['sky', 0.5], ['st_usa', 0.3], ['wave2', 0.5], ['byebye', 0.5]];
 const HA = new THREE.Vector3(0, 0, 800); // where the hyperbolic garden's tile space is drawn
 const HDOOR = F(-4, 1.1, -6.79), HGATE = F(HA.x, 1.1, HA.z + DOOR_DIST); // the green door in the back wall -> the garden's gate
 const SA = new THREE.Vector3(0, 0, -800); // where the small planet's arrival point is drawn
@@ -306,6 +310,8 @@ export function createNonEuclid(ctx) {
   ctx.sound('assets/audio/meadow.mp3', { gain: 0.7, at: [IX, 1, I.cz], ref: 10 });
 
   const P = { res: 0.8, depth: 6 };
+  // statues are baked from her a pose a frame (each is a full CPU skin), and again if she is swapped
+  const bake = { for: null, todo: [], done: [] };
   let U = 1, space = MAIN, rigRef = null, base = null; // base: the rig before the first door
   const lent = [];
   const cameraOf = () => rigRef?.children.find((c) => c.isCamera);
@@ -366,6 +372,16 @@ export function createNonEuclid(ctx) {
     const W = g.matrixWorld.clone().multiply(c.M.clone().invert()).multiply(E).multiply(Gi.copy(g.matrixWorld).invert());
     rig.updateMatrix(); rig.matrix.premultiply(W).decompose(rig.position, rig.quaternion, rig.scale); rig.updateMatrixWorld(true);
     space = MAIN; camera.layers.set(MAIN); c.sys.reset(); hadEye.v = false;
+  }
+
+  function statues() {
+    const subj = ctx.subject, acts = subj?.userData.actions;
+    if (!acts) return;
+    if (subj !== bake.for) { const todo = STATUES.filter(([n]) => acts[n]); if (!todo.length) return; bake.for = subj; bake.done = []; bake.todo = todo; }
+    if (!bake.todo.length) return;
+    bake.done.push(...bakePoses(subj, ctx.units, [bake.todo.shift()]));
+    // her motions load over the first seconds: show what's there every few statues, all of them at the end
+    if (!bake.todo.length || bake.done.length % 4 === 0) curved[HYP].sys.setCrowd(bake.done.slice());
   }
 
   function render(camera) {
@@ -443,6 +459,7 @@ export function createNonEuclid(ctx) {
       { p: [-4.3, 1.2, -3.3], label: 'diorama' }, { p: [-0.8, 0.1, 0.8], label: 'little door' }, { p: [6, 1.5, GZ], label: 'turning corridor' }, { p: [-4, 1.4, -6.8], label: 'green door' }, { p: [3.5, 1.4, 4.9], label: 'blue door' }],
     params: [
       { id: 'res', label: '포털 해상도', doc: 'Resolution of the views through the doors, as a share of the screen (VR: of both eyes). Each visible door costs one more scene render per eye.', min: 0.3, max: 1, step: 0.05, get: () => P.res, set: (x) => { P.res = x; } },
+      { id: 'crowd', label: '정원의 미쿠', doc: 'Statues of her per room in the hyperbolic garden, in the rooms within two of you (each in one of her poses). 0 = none.', type: 'number', min: 0, max: 4, step: 1, get: () => curved[HYP].sys.crowd.per, set: (x) => { curved[HYP].sys.crowd.per = Math.round(x); curved[HYP].sys.placeCrowd(); } },
       { id: 'depth', label: '복도 깊이', doc: 'How many times the endless corridors are rendered inside themselves (one scene render per eye each).', type: 'number', min: 1, max: 10, step: 1, get: () => P.depth, set: (x) => { P.depth = Math.round(x); } },
     ],
     async fit(scene, u) {
@@ -467,6 +484,7 @@ export function createNonEuclid(ctx) {
       rigRef = camera.parent;
       gal.knots.forEach((k, i) => { k.rotation.y = t * (0.3 + i * 0.1); k.rotation.x = t * 0.17; });
       H.drift(t);
+      statues();
       if (renderer.xr.isPresenting) renderer.xr.updateCamera(camera); // this frame's head, before checking the doors
       cross(camera);
       curve(camera);

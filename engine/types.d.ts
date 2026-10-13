@@ -154,6 +154,8 @@ export interface MapContext {
   sound(url: string, opts?: { loop?: boolean; gain?: number; at?: Vec3; ref?: number }): THREE.Audio;
   /** ease a sound's volume toward v; call each tick */
   fade(s: THREE.Audio, v: number, dt: number, tau?: number): void;
+  /** the character (setSubject), or null: a map may borrow its look, never move or reparent it */
+  readonly subject: THREE.Object3D | null;
 }
 export interface MapInstance {
   /** authored in metres; the engine adds it to the stage. fit() scales it by U. */
