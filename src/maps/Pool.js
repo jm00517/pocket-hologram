@@ -467,7 +467,8 @@ function surroundings(g) {
   g.add(noInk(trees(spots, () => -0.03)));
 }
 
-export function createPool(renderer, wind) {
+/** ctx: MapContext (sound) */
+export function createPool(renderer, wind, ctx) {
   windU = wind; useWind(wind);
   const g = new THREE.Group(); g.name = 'pool'; g.visible = false;
   const steel = new THREE.MeshStandardMaterial({ color: '#e4e7ea', metalness: 1, roughness: 0.18 });
@@ -486,6 +487,8 @@ export function createPool(renderer, wind) {
   board.position.set(8.6, 1.35, -1.2); board.rotation.y = -0.5; g.add(board);
   addMerged(g, steel, [cyl(0.025, 0.85, 8.42, 0, -1.08), cyl(0.025, 0.85, 8.78, 0, -1.32)]);
   noInk(g);
+  // sound: the outdoor pool and a midsummer of cicadas in the trees beyond the fence
+  if (ctx) { ctx.sound('assets/audio/pool.mp3', { gain: 0.5 }); ctx.sound('assets/audio/cicadas.mp3', { gain: 0.3 }); }
 
   const sun = new THREE.DirectionalLight('#fff3df', 3.4);
   sun.castShadow = true; sun.shadow.mapSize.set(4096, 4096); sun.shadow.bias = -0.0004; sun.shadow.normalBias = 0.03;

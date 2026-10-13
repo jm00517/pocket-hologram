@@ -25,6 +25,13 @@ export function createEngine({ canvas, far = 30000, maxPixelRatio = 2 } = {}) {
   // subject and is scaled by U, so a metre of the room is a metre of the map (MMD units would make her 20 m tall).
   renderer.xr.enabled = true; renderer.xr.setReferenceSpaceType('local-floor');
   const rig = new THREE.Group(); rig.add(camera);
+  // Sound: one listener on the camera (in VR it rides the headset). Maps make their sounds with ctx.sound();
+  // a map's looping beds play while it's the active map. Browsers start audio only after a click or key.
+  const listener = new THREE.AudioListener(); camera.add(listener);
+  const unlock = () => { if (listener.context.state !== 'running') listener.context.resume(); };
+  addEventListener('pointerdown', unlock); addEventListener('keydown', unlock);
+  const audioLoader = new THREE.AudioLoader(), buffers = new Map(), sounds = new Map(); // map id -> [{ s, loop }]
+  let creating = null;
   const stage = new THREE.Group(); scene.add(stage, rig); // floor point under the subject; maps and the subject live here
   const ambient = new THREE.AmbientLight(0xaaaaaa, 2); scene.add(ambient);
   const gi = createGI(renderer), key = gi.key;
@@ -45,6 +52,12 @@ export function createEngine({ canvas, far = 30000, maxPixelRatio = 2 } = {}) {
     key.position.set(...(L.keyDir.isVector3 ? L.keyDir.toArray() : L.keyDir)); gi.strength.value = L.gi ?? 0.6;
   };
   const captureGI = () => subject && gi.capture(scene, subject.getWorldPosition(new THREE.Vector3()).setY(stage.position.y + subjectH * 0.6), subject);
+  // play the active map's beds, pause everyone else's
+  const syncSounds = () => {
+    for (const [id, list] of sounds) for (const { s, loop } of list) {
+      if (id === active) { if (loop && s.buffer && !s.isPlaying) s.play(); } else if (s.isPlaying) s.pause();
+    }
+  };
   const resetScene = () => {
     scene.fog = null; scene.environment = null; scene.background = new THREE.Color(0x03050a);
     scene.backgroundRotation.set(0, 0, 0); scene.environmentRotation.set(0, 0, 0); scene.backgroundIntensity = 1; scene.environmentIntensity = 1;
@@ -60,6 +73,21 @@ export function createEngine({ canvas, far = 30000, maxPixelRatio = 2 } = {}) {
     captureGI: () => captureGI(),
     /** call when a map changed its lights/sky by itself (e.g. a weather switch): re-shoots GI, tells UIs */
     changed() { captureGI(); emit('baseline'); },
+    /** A sound for this map (MapContext.sound): a looping bed by default, or a one-shot (loop: false, call .play()).
+     *  at: [x, y, z] metres in the map group makes it positional (add the returned object to your group);
+     *  ref: metres at which it's at full volume. Returns the THREE.Audio / PositionalAudio at once; the file loads behind. */
+    sound(url, { loop = true, gain = 1, at = null, ref = 5 } = {}) {
+      const owner = creating, s = at ? new THREE.PositionalAudio(listener) : new THREE.Audio(listener);
+      if (at) { s.position.set(...at); s.setRefDistance(ref * U); s.setRolloffFactor(1); }
+      s.setLoop(loop); s.setVolume(gain);
+      (sounds.get(owner) ?? sounds.set(owner, []).get(owner)).push({ s, loop, url });
+      if (!buffers.has(url)) buffers.set(url, audioLoader.loadAsync(url));
+      // beds start anywhere in their loop, so layers never line up
+      buffers.get(url).then((b) => { s.setBuffer(b); if (loop) s.offset = Math.random() * b.duration; if (loop && owner === active) s.play(); }, (e) => console.warn('sound', url, e.message ?? e));
+      return s;
+    },
+    /** ease a sound's volume toward v (a bed following the weather or the hour); call each tick */
+    fade(s, v, dt, tau = 1.5) { const g = s.getVolume(); s.setVolume(g + (v - g) * (1 - Math.exp(-dt / tau))); },
     /** something happened in the map worth a look (a train, a chime): { p: stage metres, label, line?, gesture? } -> 'cue' event */
     cue(c) { emit('cue', { ...c, p: toWorld(c.p) }); },
   };
@@ -71,6 +99,7 @@ export function createEngine({ canvas, far = 30000, maxPixelRatio = 2 } = {}) {
     ['gi.tint', 'GI 색조', 'How much the captured surroundings tint the character (hue only).', () => gi.strength.value, (v) => { gi.strength.value = v; }, 0, 1.5, 0.01],
     ['gi.emitters', '발광체 빛', 'Gain of real-time emitters (lamps, vending machines) on the character.', () => gi.emGain.value, (v) => { gi.emGain.value = v; }, 0, 5, 0.05],
     ['gi.rim', '림 라이트', 'Rim on the character: the light behind her wraps her silhouette, plus an edge from the key when it is behind her (0 = off).', () => gi.rim.value, (v) => { gi.rim.value = v; }, 0, 3, 0.01],
+    ['audio.volume', '소리', 'Master volume of the world sound (ambience, spot sounds, her voice).', () => listener.getMasterVolume(), (v) => { listener.setMasterVolume(v); }, 0, 1.5, 0.01],
     ['env.reflect', '하늘 반사', 'scene.environmentIntensity: image-based light on PBR surfaces.', () => scene.environmentIntensity, (v) => { scene.environmentIntensity = v; }, 0, 2, 0.01],
     ['env.background', '하늘 밝기', 'scene.backgroundIntensity: brightness of an HDRI background.', () => scene.backgroundIntensity, (v) => { scene.backgroundIntensity = v; }, 0, 2, 0.01],
     ['post.bloom', '블룸', 'Bloom strength.', () => post.bloom.strength, (v) => { post.bloom.strength = v; }, 0, 2, 0.01],
@@ -88,7 +117,7 @@ export function createEngine({ canvas, far = 30000, maxPixelRatio = 2 } = {}) {
   const command = (name, doc, args, run) => commands.set(name, { name, doc, args, run, owner: 'engine' });
 
   const engine = {
-    renderer, scene, camera, stage, post, gi, ambient, key, params, wind,
+    renderer, scene, camera, stage, post, gi, ambient, key, params, wind, listener,
     /** 'rig': the app drives the camera (head-coupled window, free cam). 'manual': set by the camera command. */
     cameraMode: 'rig',
     get units() { return U; },
@@ -117,8 +146,9 @@ export function createEngine({ canvas, far = 30000, maxPixelRatio = 2 } = {}) {
       params.remove('map'); for (const [n, c] of commands) if (c.owner === 'map') commands.delete(n);
       resetScene();
       active = wanted; inst = null;
-      if (!active) { applyLook(DEFAULT_LOOK); post.setScale(U); captureGI(); emit('map', null); emit('baseline'); return null; }
-      if (!instances.has(active)) { const i = defs.get(active).create(ctx); instances.set(active, i); stage.add(i.group); }
+      if (!active) { syncSounds(); applyLook(DEFAULT_LOOK); post.setScale(U); captureGI(); emit('map', null); emit('baseline'); return null; }
+      if (!instances.has(active)) { creating = active; const i = defs.get(active).create(ctx); creating = null; instances.set(active, i); stage.add(i.group); }
+      syncSounds();
       inst = instances.get(active);
       inst.group.visible = true;
       params.define((inst.params ?? []).map((p) => ({ ...p, id: `${active}.${p.id}` })), 'map');
@@ -142,6 +172,8 @@ export function createEngine({ canvas, far = 30000, maxPixelRatio = 2 } = {}) {
     clearSubject() { subject = null; },
     captureGI,
     toWorld, toMetres,
+    /** every map sound: what's loaded, playing and how loud (for agents over the bridge) */
+    sounds: () => [...sounds].flatMap(([map, list]) => list.map(({ s, url }) => ({ map, url, loaded: !!s.buffer, playing: s.isPlaying, volume: +s.getVolume().toFixed(2) }))),
 
     // --- command surface (what the bridge and agents call) ---
     commands: () => [...commands.values()].map(({ name, doc, args }) => ({ name, doc, args })),

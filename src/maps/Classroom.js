@@ -288,8 +288,8 @@ function chime() {
   } catch {} // no audio before a click: she still looks up at the speaker
 }
 
-/** cue: MapContext.cue (the chime turns her head) */
-export function createClassroom(renderer, wind, cue) {
+/** ctx: MapContext (cue: the chime turns her head; sound: the room and the ground outside) */
+export function createClassroom(renderer, wind, ctx) {
   const g = new THREE.Group(); g.name = 'classroom'; g.visible = false;
   const bays = shell(g); front(g); desks(g); rest(g); outside(g);
   const fx = shafts(g, bays), curtainTime = curtains(g, bays, wind);
@@ -306,6 +306,13 @@ export function createClassroom(renderer, wind, cue) {
   g.add(sun, target, fill, bounce);
   noInk(g);
   let lastQuarter = null;
+  // sound: the quiet room, the ball club through the open windows, higurashi in the evening hill behind
+  if (ctx) {
+    const A = 'assets/audio/';
+    ctx.sound(A + 'classroom.mp3', { gain: 0.35 });
+    ctx.sound(A + 'higurashi.mp3', { gain: 0.12 });
+    g.add(ctx.sound(A + 'school-ground.mp3', { at: [X0 - 8, 1.5, -4], ref: 4, gain: 0.8 }));
+  }
   return {
     group: g,
     // what main applies to the character lights and the post chain
@@ -331,7 +338,7 @@ export function createClassroom(renderer, wind, cue) {
       curtainTime.value = t; fx.dust.uniforms.uTime.value = t;
       // the chime on the real clock's quarter hours, like a school's bells keep the day
       const q = Math.floor(Date.now() / 900000);
-      if (lastQuarter !== null && q !== lastQuarter) { chime(); cue?.({ p: [2.9, 2.75, Z0], label: 'chime', line: 'あ、チャイム', hold: 3.5 }); }
+      if (lastQuarter !== null && q !== lastQuarter) { chime(); ctx?.cue({ p: [2.9, 2.75, Z0], label: 'chime', line: 'あ、チャイム', hold: 3.5 }); }
       lastQuarter = q;
     },
   };

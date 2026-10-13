@@ -20,7 +20,8 @@ function pickVoice(lang) {
 async function reply(text) { return text; }
 
 // controls go in the drawer's character section; only the chat input sits at the bottom of the screen
-export function mountChatBar(getBehavior, controlsRoot) {
+/** route(audioElement): optional, sends her voice somewhere other than straight out (e.g. a 3D sound at her head) */
+export function mountChatBar(getBehavior, controlsRoot, { route } = {}) {
   const ctl = document.createElement('div');
   ctl.innerHTML = `
     <h4>표정</h4><div class="chips">${FACES.map((f) => `<button data-f="${f}">${f}</button>`).join('')}</div>
@@ -75,6 +76,7 @@ export function mountChatBar(getBehavior, controlsRoot) {
         if (i + 1 < clauses.length) next = tts(clauses[i + 1]);
         voice?.pause();
         voice = new Audio('data:audio/wav;base64,' + audio);
+        route?.(voice);
         voice.onplay = () => beh.speakTimed(marks);
         const ended = new Promise((r) => { voice.onended = r; });
         await voice.play();

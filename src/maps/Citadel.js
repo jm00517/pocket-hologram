@@ -334,7 +334,10 @@ function scanMaterial(src) {
 }
 
 // --- the map --------------------------------------------------------------------------------------------
-export function createCitadel({ renderer, wind, ambient, key }) {
+export function createCitadel(ctx) {
+  const { renderer, wind, ambient, key } = ctx;
+  // sound: wind over the meadow by day, insects at night
+  const meadow = ctx.sound('assets/audio/meadow.mp3', { gain: 0 }), insects = ctx.sound('assets/audio/night-insects.mp3', { gain: 0 });
   useWind(wind.uniforms);
   const g = new THREE.Group(); g.name = 'citadel'; g.visible = false;
   const sky = createVolumetricSky(renderer, { wind });
@@ -462,6 +465,8 @@ export function createCitadel({ renderer, wind, ambient, key }) {
       g.getWorldPosition(origin);
       sky.tick(t, dt, camera, { origin, U: units });
       lights.update();
+      const night = sky.values.elev < -4;
+      ctx.fade(meadow, night ? 0.15 : 0.5, dt); ctx.fade(insects, night ? 0.45 : 0, dt);
       const hz = sky.uniforms.uHorizon.value;
       fog.color.copy(hz).multiplyScalar(sky.values.skyGain);
       MIST.uMistCol.value.copy(fog.color).multiplyScalar(1.05);

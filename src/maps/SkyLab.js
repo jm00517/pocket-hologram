@@ -4,7 +4,9 @@
 import * as THREE from 'three';
 import { createVolumetricSky, createSkyLights } from '../../engine/sky/VolumetricSky.js';
 
-export function createSkyLab({ renderer, wind, ambient, key }) {
+export function createSkyLab(ctx) {
+  const { renderer, wind, ambient, key } = ctx;
+  ctx.sound('assets/audio/meadow.mp3', { gain: 0.3 });
   const g = new THREE.Group(); g.name = 'skylab'; g.visible = false;
   const sky = createVolumetricSky(renderer, { wind });
   const lights = createSkyLights(sky, { ambient, key });

@@ -95,6 +95,7 @@ async function loadCharacter(url,manager){
   clearModels();character=c;window.character=c; // console / future LLM hook
   c.life=new Life(c,{say:t=>window.chat?.say(t),P:lifeP});
   c.touch=new Touch(c,{say:t=>window.chat?.say(t),P:lifeP});
+  c.bones['頭'].add(voice3d);
   const h=new THREE.Box3().setFromObject(mesh).getSize(new THREE.Vector3()).y;
   charHeight=h;
   stage.add(mesh);blob.scale.set(h*.45,h*.3,1);blob.visible=true;layout();
@@ -188,7 +189,10 @@ $('#fullscreen').onclick=()=>{document.documentElement.requestFullscreen?.();scr
 $('#calibrate').onclick=()=>calPanel.classList.toggle('hidden');
 $('#debug').onclick=()=>debugPanel.classList.toggle('hidden');
 bindCalibrationPanel(calPanel,calibration,layout);
-window.chat=mountChatBar(()=>character?.behavior,$('#charRows'));
+// her voice comes from her head: a 3D sound on the head bone (in VR you hear where she is)
+const voice3d=new THREE.PositionalAudio(engine.listener);voice3d.setVolume(1.3);
+engine.on('map',()=>voice3d.setRefDistance(2.5*engine.units)); // full volume within 2.5 m (the window view sits ~4 m off)
+window.chat=mountChatBar(()=>character?.behavior,$('#charRows'),{route:el=>{voice3d.source?.disconnect();voice3d.setMediaElementSource(el);engine.listener.context.resume()}});
 
 function resize(){engine.resize();layout()}addEventListener('resize',resize);addEventListener('fullscreenchange',resize);resize();
 // Local models live in assets/ (gitignored, MMD licenses forbid redistribution). The first one that exists

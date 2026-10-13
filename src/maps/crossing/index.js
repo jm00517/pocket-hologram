@@ -30,9 +30,19 @@ export const crossingMap = ({ weather = 'sunset', foliage = 'full' } = {}) => de
     // what she looks at (Life.js), in crossing metres -> stage metres (the crossing slides under her when she walks)
     const at = (x, y, z) => [x - focus.x, y - focus.y, z - focus.z];
     const SPOTS = [['vending', 4.0, 1.4, -3.0], ['vending', -4.35, 1.4, -2.2], ['sea', -6, 0.5, -70], ['track', -18, 1.5, -11], ['mirror', 3, 2.2, -8], ['sky', 25, 40, -120]];
-    crossing.onTrain = (k) => ctx.cue(k === 'coming'
+    // sound: waves always, the season's insects by the hour, rain in rain; the real crossing (bells, the train,
+    // the gate lifting) from the track. The recording's train is 36 s in; ours reaches the road 5 s after the bells.
+    const A = 'assets/audio/', bed = (f) => ctx.sound(A + f, { gain: 0 });
+    const beds = { waves: bed('waves.mp3'), cicadas: bed('cicadas.mp3'), higurashi: bed('higurashi.mp3'), night: bed('night-insects.mp3'), rain: bed('town-rain.mp3') };
+    const MIX = { day: { waves: 0.45, cicadas: 0.35 }, anime: { waves: 0.45, cicadas: 0.35 }, sunset: { waves: 0.45, higurashi: 0.4 },
+      night: { waves: 0.4, night: 0.45 }, neon: { waves: 0.3, night: 0.35 }, rain: { waves: 0.25, rain: 0.6 }, snow: { waves: 0.3 } };
+    const bells = ctx.sound(A + 'crossing.mp3', { loop: false, at: [0, 2, -11], ref: 6, gain: 0.9 }); crossing.group.add(bells);
+    crossing.onTrain = (k) => {
+      if (k === 'coming' && bells.buffer) { if (bells.isPlaying) bells.stop(); bells.offset = 31; bells.play(); }
+      ctx.cue(k === 'coming'
       ? { p: at(-35, 2, -11), label: 'train coming', line: 'あ、でんしゃ！', hold: 3 }
       : { p: at(0, 2, -11), label: 'train passing', gesture: 'wave', line: 'ばいばーい', hold: 3.5 });
+    };
     return {
       group: crossing.group,
       interests: () => SPOTS.map(([label, x, y, z]) => ({ p: at(x, y, z), label })),
@@ -51,7 +61,11 @@ export const crossingMap = ({ weather = 'sunset', foliage = 'full' } = {}) => de
       },
       async fit(scene, U) { crossing.fit(scene, U); current = await w.set(current, U); },
       unfit(scene) { crossing.unfit(scene); },
-      tick(t, { dt }) { crossing.tick(t, dt); w.tick(t, dt); fol?.tick(t); },
+      tick(t, { dt }) {
+        crossing.tick(t, dt); w.tick(t, dt); fol?.tick(t);
+        const mix = MIX[current] ?? MIX.day;
+        for (const [k, s] of Object.entries(beds)) ctx.fade(s, mix[k] ?? 0, dt);
+      },
     };
   },
 });

@@ -150,6 +150,10 @@ export interface MapContext {
   changed(): void;
   /** Something happened worth a look (a train arriving, a chime). The app's character can turn to it. */
   cue(c: Cue): void;
+  /** A looping bed (default) or a one-shot (loop: false, .play()). at = metres in your group -> PositionalAudio (add it to the group); ref = full-volume distance (m). The active map's beds play; others pause. */
+  sound(url: string, opts?: { loop?: boolean; gain?: number; at?: Vec3; ref?: number }): THREE.Audio;
+  /** ease a sound's volume toward v; call each tick */
+  fade(s: THREE.Audio, v: number, dt: number, tau?: number): void;
 }
 export interface MapInstance {
   /** authored in metres; the engine adds it to the stage. fit() scales it by U. */
