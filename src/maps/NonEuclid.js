@@ -15,11 +15,17 @@ import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { loadSky } from '../../engine/index.js';
 import { trees, useWind, noInk } from './crossing/Foliage.js';
 
-const MAIN = 0, HALL = 10, ISLAND = 11, CORR = 12; // camera layers (1 and 2 are three's per-eye layers in VR)
-// CORR: the corridor alone (also in MAIN), for its recursion. Seen from k x 6 m back, an oblique near plane drags
+const MAIN = 0, HALL = 10, ISLAND = 11, CORR = 12, GRAV = 13; // camera layers (1 and 2 are three's per-eye layers in VR)
+// CORR, GRAV: the torii corridor / the turning corridor alone (also in MAIN), for their recursion. Seen from k x 6 m back, an oblique near plane drags
 // the far plane in and cuts the far gates off; with only the corridor on the layer there is nothing to clip.
 const HX = 400, IX = -400; // where the hall and the island are
 const BOOTH = new THREE.Vector3(-2.4, 1.05, -1.2), FRAME = new THREE.Vector3(2.4, 1.15, -1.2), CZ = -7, CL = 6; // corridor CZ..CZ-CL
+const F = (x, y, z, ry = 0, rz = 0, s = 1) => new THREE.Matrix4().compose(new THREE.Vector3(x, y, z), new THREE.Quaternion().setFromEuler(new THREE.Euler(0, ry, rz, 'YXZ')), new THREE.Vector3(s, s, s));
+// door frames (door space: opening centred on the origin, facing +z)
+const ALICE = F(-5.98, 1.05, 1.5, Math.PI / 2), DOLL = F(-0.8, 0.105, 0.8, 0, 0, 0.1); // a normal door -> one a tenth that size
+const DIORAMA = F(-4.3, 1.18, -3.29), FRONT = F(0, 2.1, 4.99, 0, 0, 20); // the box's 60 x 21 cm glass -> the 12 x 4.2 m front wall
+const GX = 6.2, GL = 8, GZ = -4.5; // the turning corridor: x GX..GX+GL, 3 m square around y 1.5, z GZ
+const GEND = F(GX + GL, 1.5, GZ, -Math.PI / 2), GSTART = F(GX, 1.5, GZ, -Math.PI / 2, Math.PI / 2); // its end -> its start, a quarter turned
 const rnd = ((s) => () => (s = (s * 16807) % 2147483647) / 2147483647)(7);
 
 const box = (w, h, d, x, y, z) => new THREE.BoxGeometry(w, h, d).translate(x, y, z);
@@ -49,12 +55,12 @@ function gallery(g) {
   }, [6, 6]) });
   add(g, oak, [box(12, 0.1, 12, 0, -0.05, -1)]);
   // walls with a doorway in the back one (the corridor); front wall behind where you start
-  add(g, plaster, [box(0.2, 4.2, 12, -6.1, 2.1, -1), box(0.2, 4.2, 12, 6.1, 2.1, -1), box(12.4, 4.2, 0.2, 0, 2.1, 5.1),
+  add(g, plaster, [box(0.2, 4.2, 8.05, -6.1, 2.1, -2.975), box(0.2, 4.2, 3.05, -6.1, 2.1, 3.475), box(0.2, 2.1, 0.9, -6.1, 3.15, 1.5),
+    box(0.2, 4.2, 1, 6.1, 2.1, -6.5), box(0.2, 4.2, 8, 6.1, 2.1, 1), box(0.2, 1.2, 3, 6.1, 3.6, -4.5), box(12.4, 4.2, 0.2, 0, 2.1, 5.1),
     box(4.8, 4.2, 0.2, -3.6, 2.1, CZ + 0.1), box(4.8, 4.2, 0.2, 3.6, 2.1, CZ + 0.1), box(2.4, 1.2, 0.2, 0, 3.6, CZ + 0.1),
     box(12.4, 0.2, 12.4, 0, 4.3, -1)], { cast: false });
-  // ceiling light panels, skirting
+  // ceiling light panels
   add(g, std('#fff', 1, { emissive: '#fff6ea', emissiveIntensity: 1.6 }), [-3, 0, 3].flatMap((x) => [box(1.6, 0.02, 1.6, x, 4.19, -4), box(1.6, 0.02, 1.6, x, 4.19, 1)]), { cast: false });
-  add(g, std('#d8d2c8', 0.5), [box(0.04, 0.12, 12, -5.98, 0.06, -1), box(0.04, 0.12, 12, 5.98, 0.06, -1)], { cast: false });
   // two plinths with slowly turning knots, gallery pieces
   add(g, std('#eceae4', 0.7), [box(0.6, 1, 0.6, -4.5, 0.5, 2.5), box(0.6, 1, 0.6, 4.5, 0.5, 2.5)]);
   const knots = [-4.5, 4.5].map((x, i) => {
@@ -87,7 +93,48 @@ function gallery(g) {
     const l = new THREE.PointLight('#ffb36b', 1, 6, 2); l.position.set(0, 2.6, z); g.add(l); lamps.push([l, 2.2]); corr.push(m, l);
   }
   for (const o of corr) o.layers.enable(CORR);
+
+  // Alice's door in the left wall (white, "DRINK ME"), and the doll's door it leads to, 21 cm tall at her feet
+  const white = std('#f6f4ef', 0.5);
+  add(g, white, doorFrame(ALICE, 0.9, 2.1, 0.08));
+  add(g, white, doorFrame(DOLL, 0.9, 2.1, 0.08, true));
+  const sign = new THREE.Mesh(new THREE.PlaneGeometry(0.7, 0.18), new THREE.MeshStandardMaterial({ map: canvasTex(512, 128, (c, w, h) => {
+    c.fillStyle = '#f7f1e3'; c.fillRect(0, 0, w, h); c.fillStyle = '#5a3a2a'; c.font = 'italic 64px Georgia, serif'; c.textAlign = 'center'; c.textBaseline = 'middle'; c.fillText('DRINK ME', w / 2, h / 2 + 4);
+  }), roughness: 0.8 }));
+  sign.applyMatrix4(new THREE.Matrix4().makeTranslation(0, 1.3, 0.03).premultiply(ALICE)); g.add(sign);
+
+  // the diorama: a wooden box on a plinth; through its glass, this whole gallery at 1/20, diorama and all
+  const wood = std('#6b4a32', 0.6), D = DIORAMA.elements, dx = D[12], dy = D[13], dz = D[14];
+  add(g, std('#eceae4', 0.7), [box(0.9, dy - 0.18, 0.75, dx, (dy - 0.18) / 2, dz - 0.31)]);
+  add(g, wood, [box(0.8, 0.06, 0.64, dx, dy - 0.15, dz - 0.31), box(0.8, 0.07, 0.64, dx, dy + 0.14, dz - 0.31), box(0.1, 0.36, 0.64, dx - 0.35, dy, dz - 0.31),
+    box(0.1, 0.36, 0.64, dx + 0.35, dy, dz - 0.31), box(0.8, 0.36, 0.04, dx, dy, dz - 0.61)]);
+  add(g, std('#c9a14a', 0.3, { metalness: 1 }), [box(0.64, 0.02, 0.02, dx, dy - 0.115, dz + 0.01), box(0.64, 0.02, 0.02, dx, dy + 0.115, dz + 0.01)], { cast: false });
+
+  // the turning corridor through the right wall: every 8 m it turns a quarter about its own axis, so the next
+  // stretch's floor is this one's wall. Rug, lamps and bench on the floor, paintings on one wall, windows on the other
+  const tw = [];
+  tw.push(add(g, std('#7a5a40', 0.6), [box(GL, 0.1, 3, GX + GL / 2, -0.05, GZ)]), add(g, std('#efe9de', 0.9), [box(GL, 0.1, 3, GX + GL / 2, 3.05, GZ)], { cast: false }));
+  tw.push(add(g, std('#b8322a', 0.9), [box(GL - 1, 0.012, 1.2, GX + GL / 2, 0.006, GZ)], { cast: false }));
+  tw.push(add(g, std('#dfe6ea', 0.9), [box(GL, 3, 0.1, GX + GL / 2, 1.5, GZ - 1.55), box(GL, 3, 0.1, GX + GL / 2, 1.5, GZ + 1.55)], { cast: false }));
+  const art = ['#e2a33b', '#3b7fe2', '#3be28c'].map((c, i) => new THREE.Mesh(new THREE.PlaneGeometry(1.1, 0.8), std(c, 0.8)).translateX(GX + 1.5 + i * 2.5).translateY(1.7).translateZ(GZ - 1.47));
+  tw.push(...art, add(g, std('#c9a14a', 0.3, { metalness: 1 }), art.map((a) => box(1.25, 0.95, 0.04, a.position.x, 1.7, GZ - 1.5))));
+  for (const a of art) g.add(a);
+  tw.push(add(g, std('#000', 1, { emissive: '#bcd8ff', emissiveIntensity: 1.6 }), [0, 1, 2].map((i) => box(1.2, 1.6, 0.02, GX + 1.5 + i * 2.5, 1.6, GZ + 1.49)), { cast: false }));
+  tw.push(add(g, std('#3a3330', 0.5), [box(1.4, 0.08, 0.4, GX + 4, 0.45, GZ - 1.1), box(0.08, 0.45, 0.35, GX + 3.4, 0.22, GZ - 1.1), box(0.08, 0.45, 0.35, GX + 4.6, 0.22, GZ - 1.1),
+    cyl(0.03, 1.6, GX + 1.2, 0, GZ + 1.1), cyl(0.03, 1.6, GX + 6.8, 0, GZ + 1.1)]));
+  const shade = std('#fff', 1, { emissive: '#ffd6a0', emissiveIntensity: 2 });
+  tw.push(add(g, shade, [new THREE.CylinderGeometry(0.12, 0.22, 0.3, 16).translate(GX + 1.2, 1.7, GZ + 1.1), new THREE.CylinderGeometry(0.12, 0.22, 0.3, 16).translate(GX + 6.8, 1.7, GZ + 1.1)], { cast: false }));
+  for (const x of [GX + 2, GX + 6]) { // on the axis, so every quarter-turned copy is lit the same
+    const l = new THREE.PointLight('#ffe2bd', 1, 7, 2); l.position.set(x, 1.5, GZ); g.add(l); lamps.push([l, 3]); tw.push(l);
+  }
+  for (const o of tw) o.layers.enable(GRAV);
   return { knots, lamps };
+}
+
+// a door's frame in door space (opening w x h centred on the origin, facing +z), placed by the door's matrix F
+function doorFrame(F, w, h, t, sill = false) {
+  return [box(t, h + t, t, -w / 2 - t / 2, t / 2, 0), box(t, h + t, t, w / 2 + t / 2, t / 2, 0), box(w + 2 * t, t, t, 0, h / 2 + t / 2, 0), ...(sill ? [box(w + 2 * t + 0.4, 0.05, 0.5, 0, -h / 2 - 0.025, 0)] : [])]
+    .map((b) => b.applyMatrix4(F));
 }
 
 function goldFrame(g, c, layer) {
@@ -177,6 +224,9 @@ function island(g) {
 }
 
 // --- portals -----------------------------------------------------------------------------------------
+// A door is a frame matrix F (door space: the opening w x h centred on the origin, facing +z, in its own units; F may
+// rotate and scale). Through door A you see what lies behind door B: M = F_B F_A^-1 carries A's side of the world
+// onto B's, and the eye with it. M can turn (the corridor) and scale (Alice's door, the diorama).
 const PORTAL_VERT = 'varying vec3 vW; void main() { vec4 w = modelMatrix * vec4(position, 1.0); vW = w.xyz; gl_Position = projectionMatrix * viewMatrix * w; }';
 const PORTAL_FRAG = /* glsl */`
   uniform sampler2D tView; uniform vec2 uFull; uniform vec3 uP, uN; uniform float uDim; varying vec3 vW;
@@ -186,20 +236,25 @@ const PORTAL_FRAG = /* glsl */`
     #include <tonemapping_fragment>
     #include <colorspace_fragment>
   }`;
-function portal(g, { at, n, w, h, T, from, to, recursive = false }) {
-  // an open box behind the doorway, drawn from inside (BackSide): flat until an eye comes close, then 0.4 m deep,
+const RY = new THREE.Matrix4().makeRotationY(Math.PI);
+/** opts: w, h (door units), from/to (space layers), view (layer the far side is drawn with; a layer of its own
+ *  means nothing needs clipping), depth (recursion; 'depth' = the corridor param), walk (can you step through),
+ *  active() (is the door there now), onCross() */
+function portal(g, Fa, Fb, { w, h, from, to, view = to, depth = 1, walk = true, active = null, onCross = null }) {
+  // an open box behind the doorway, drawn from inside (BackSide): flat until an eye comes close, then 0.4 deep,
   // so the near plane passing through the doorway still finds the other side behind it
   const mat = new THREE.ShaderMaterial({ vertexShader: PORTAL_VERT, fragmentShader: PORTAL_FRAG, side: THREE.BackSide,
     uniforms: { tView: { value: null }, uFull: { value: new THREE.Vector2(1, 1) }, uP: { value: new THREE.Vector3() }, uN: { value: new THREE.Vector3() }, uDim: { value: 1 } } });
   mat.userData.outlineParameters = { visible: false };
   const mesh = new THREE.Mesh(new THREE.BoxGeometry(w, h, 1).translate(0, 0, -0.5), mat);
-  mesh.position.copy(at); if (n < 0) mesh.rotation.y = Math.PI; mesh.scale.z = 1e-3;
-  mesh.layers.set(from); mesh.userData.noAO = true; mesh.frustumCulled = false; g.add(mesh);
-  if (recursive) mesh.layers.enable(CORR);
-  return { mesh, at: at.clone(), n: new THREE.Vector3(0, 0, n), w, h, T: T.clone(), from, to, recursive, rts: [] };
+  mesh.matrixAutoUpdate = false; mesh.layers.set(from); if (view !== to) mesh.layers.enable(view);
+  mesh.userData.noAO = true; mesh.frustumCulled = false; g.add(mesh);
+  return { mesh, F: Fa.clone(), Fi: Fa.clone().invert(), M: Fb.clone().multiply(Fa.clone().invert()), w, h, from, to, view, depth, walk, active, onCross, rts: [] };
 }
+/** a door and its twin at the far end, looking back */
+const pair = (g, Fa, Fb, opts) => [portal(g, Fa, Fb, opts), portal(g, Fb.clone().multiply(RY), Fa.clone().multiply(RY), { ...opts, from: opts.to, to: opts.from, view: opts.from })];
 
-const eyeFrom = new THREE.Matrix4(), vcam = new THREE.PerspectiveCamera(), clipPlane = new THREE.Plane(), q4 = new THREE.Vector4(), c4 = new THREE.Vector4();
+const vcam = new THREE.PerspectiveCamera(), clipPlane = new THREE.Plane(), q4 = new THREE.Vector4(), c4 = new THREE.Vector4();
 vcam.matrixAutoUpdate = false; vcam.matrixWorldAutoUpdate = false;
 // Lengyel's oblique near plane (as three's Reflector): plane in view space, normal toward what to keep
 function oblique(P, plane) {
@@ -216,33 +271,37 @@ export function createNonEuclid(ctx) {
   useWind(ctx.wind.uniforms);
   const g = new THREE.Group(); g.name = 'noneuclid'; g.visible = false;
   const gal = gallery(g), H = hall(g), I = island(g);
-  const v = (x, y, z) => new THREE.Vector3(x, y, z);
-  const T1 = H.door.clone().sub(BOOTH), T2 = I.fr.clone().sub(FRAME), T3 = H.fr.clone().sub(FRAME), T4 = v(0, 0, CL);
+  const T = (v, ry = 0) => F(v.x, v.y, v.z, ry);
+  let twist = 0; // quarter turns taken down the turning corridor; only every fourth lets you back out
   const portals = [
-    portal(g, { at: BOOTH, n: 1, w: 0.8, h: 2.1, T: T1, from: MAIN, to: HALL }),
-    portal(g, { at: H.door, n: -1, w: 0.8, h: 2.1, T: T1.clone().negate(), from: HALL, to: MAIN }),
-    portal(g, { at: FRAME, n: 1, w: 1.2, h: 2.1, T: T2, from: MAIN, to: ISLAND }),
-    portal(g, { at: I.fr, n: -1, w: 1.2, h: 2.1, T: T2.clone().negate(), from: ISLAND, to: MAIN }),
-    portal(g, { at: FRAME, n: -1, w: 1.2, h: 2.1, T: T3, from: MAIN, to: HALL }),
-    portal(g, { at: H.fr, n: 1, w: 1.2, h: 2.1, T: T3.clone().negate(), from: HALL, to: MAIN }),
-    portal(g, { at: v(0, 1.6, CZ - CL), n: 1, w: 2.4, h: 3.2, T: T4, from: MAIN, to: MAIN, recursive: true }),
+    ...pair(g, T(BOOTH), T(H.door), { w: 0.8, h: 2.1, from: MAIN, to: HALL }),
+    ...pair(g, T(FRAME), T(I.fr), { w: 1.2, h: 2.1, from: MAIN, to: ISLAND }),
+    ...pair(g, T(FRAME, Math.PI), T(H.fr, Math.PI), { w: 1.2, h: 2.1, from: MAIN, to: HALL }),
+    portal(g, F(0, 1.6, CZ - CL), F(0, 1.6, CZ), { w: 2.4, h: 3.2, from: MAIN, to: MAIN, view: CORR, depth: 'depth' }),
+    ...pair(g, ALICE, DOLL, { w: 0.9, h: 2.1, from: MAIN, to: MAIN }),
+    portal(g, DIORAMA, FRONT, { w: 0.6, h: 0.21, from: MAIN, to: MAIN, depth: 3, walk: false }),
+    portal(g, GEND, GSTART, { w: 3, h: 3, from: MAIN, to: MAIN, view: GRAV, depth: 'depth', onCross: () => twist++ }),
+    // walking back out of a turned stretch: its doorway is the end of the stretch before
+    portal(g, GSTART.clone().multiply(RY), GEND.clone().multiply(RY), { w: 3, h: 3, from: MAIN, to: MAIN, active: () => twist % 4 !== 0, onCross: () => twist-- }),
   ];
   noInk(g);
   ctx.sound('assets/audio/meadow.mp3', { gain: 0.7, at: [IX, 1, I.cz], ref: 10 });
 
   const P = { res: 0.8, depth: 6 };
-  let U = 1, space = MAIN, rigRef = null;
+  let U = 1, space = MAIN, rigRef = null, base = null; // base: the rig before the first door
   const lent = [];
+  const cameraOf = () => rigRef?.children.find((c) => c.isCamera);
   // entering or leaving VR the engine places the rig itself: whatever doors it went through are forgotten
-  const home = (camera) => { offset.set(0, 0, 0); space = MAIN; hadEye.v = false; camera?.layers.set(MAIN); };
-  for (const ev of ['sessionstart', 'sessionend']) renderer.xr.addEventListener(ev, () => home(rigRef?.children.find((c) => c.isCamera)));
-  const offset = new THREE.Vector3(), prevEye = new THREE.Vector3(), eye = new THREE.Vector3(), hadEye = { v: false };
-  const tmp = new THREE.Vector3(), tmp2 = new THREE.Vector3(), Tw = new THREE.Matrix4(), frustum = new THREE.Frustum(), pv = new THREE.Matrix4(), bb = new THREE.Box3();
-  const full = new THREE.Vector2(), ptLights = [];
-  const worldT = (T, k = 1) => { // map-metre translation -> world translation matrix (the group is scaled, not rotated)
-    g.localToWorld(tmp.set(0, 0, 0)); g.localToWorld(tmp2.copy(T).multiplyScalar(k));
-    return Tw.makeTranslation(tmp2.x - tmp.x, tmp2.y - tmp.y, tmp2.z - tmp.z);
-  };
+  const home = () => { base = null; space = MAIN; twist = 0; hadEye.v = false; cameraOf()?.layers.set(MAIN); };
+  renderer.xr.addEventListener('sessionend', home);
+  renderer.xr.addEventListener('sessionstart', () => { if (base) rigRef.quaternion.identity(); home(); }); // the engine resets position and scale only
+  const prevEye = new THREE.Vector3(), eye = new THREE.Vector3(), hadEye = { v: false };
+  const tmp = new THREE.Vector3(), l0 = new THREE.Vector3(), l1 = new THREE.Vector3(), frustum = new THREE.Frustum(), pv = new THREE.Matrix4(), bb = new THREE.Box3();
+  const full = new THREE.Vector2(), ptLights = [], Gi = new THREE.Matrix4(), Mk = new THREE.Matrix4(), Mw = new THREE.Matrix4(), Fd = new THREE.Matrix4(), keep = new THREE.Vector3(), destW = new THREE.Vector3();
+  const on = (p) => p.from === space && (p.active?.() ?? true);
+  const levelsOf = (p) => (p.depth === 'depth' ? P.depth : p.depth);
+  // map-space M^k -> world: G M^k G^-1
+  const worldM = (M, k, out) => { out.identity(); for (let i = 0; i < k; i++) out.premultiply(M); return out.premultiply(g.matrixWorld).multiply(Gi.copy(g.matrixWorld).invert()); };
   const rtFor = (p, i) => {
     const w = Math.max(1, Math.round(full.x * P.res)), h = Math.max(1, Math.round(full.y * P.res));
     let rt = p.rts[i];
@@ -256,15 +315,16 @@ export function createNonEuclid(ctx) {
     camera.getWorldPosition(eye); g.worldToLocal(eye);
     if (!hadEye.v) { prevEye.copy(eye); hadEye.v = true; }
     for (const p of portals) {
-      if (p.from !== space) continue;
-      const d0 = tmp.copy(prevEye).sub(p.at).dot(p.n), d1 = tmp.copy(eye).sub(p.at).dot(p.n);
-      if (!(d0 >= 0 && d1 < 0)) continue;
-      const hit = tmp.copy(prevEye).lerp(eye, d0 / (d0 - d1)).sub(p.at);
+      if (!p.walk || !on(p)) continue;
+      l0.copy(prevEye).applyMatrix4(p.Fi); l1.copy(eye).applyMatrix4(p.Fi);
+      if (!(l0.z >= 0 && l1.z < 0)) continue;
+      const hit = tmp.copy(l0).lerp(l1, l0.z / (l0.z - l1.z));
       if (Math.abs(hit.x) > p.w / 2 || Math.abs(hit.y) > p.h / 2) continue;
-      const rig = camera.parent, m = worldT(p.T);
-      tmp2.setFromMatrixPosition(m); rig.position.add(tmp2); offset.add(tmp2); rig.updateMatrixWorld(true);
-      space = p.to; camera.layers.set(space);
-      eye.add(p.T);
+      const rig = camera.parent;
+      rig.updateMatrix(); if (!base) base = rig.matrix.clone();
+      rig.matrix.premultiply(worldM(p.M, 1, Mw)).decompose(rig.position, rig.quaternion, rig.scale); rig.updateMatrixWorld(true);
+      space = p.to; camera.layers.set(space); p.onCross?.();
+      eye.applyMatrix4(p.M);
       break;
     }
     prevEye.copy(eye);
@@ -282,17 +342,15 @@ export function createNonEuclid(ctx) {
     frustum.setFromProjectionMatrix(pv.multiplyMatrices(viewCam.projectionMatrix, viewCam.matrixWorldInverse));
     viewCam.getWorldPosition(eye); g.worldToLocal(eye);
     const todo = portals.filter((p) => {
-      p.mesh.visible = p.from === space;
-      if (!p.mesh.visible || tmp.copy(eye).sub(p.at).dot(p.n) <= 0) return false;
+      p.mesh.visible = on(p);
+      const l = tmp.copy(eye).applyMatrix4(p.Fi);
       // deepen the doorway's box when the eye is about to step through it
-      p.mesh.scale.z = tmp.copy(eye).sub(p.at).dot(p.n) < 0.6 && Math.abs(eye.x - p.at.x) < p.w && Math.abs(eye.y - p.at.y) < p.h ? 0.4 : 1e-3;
+      p.mesh.matrix.copy(p.F).multiply(Mk.makeScale(1, 1, l.z > 0 && l.z < 0.6 && Math.abs(l.x) < p.w && Math.abs(l.y) < p.h ? 0.4 : 1e-3));
       p.mesh.updateMatrixWorld();
-      return frustum.intersectsBox(bb.setFromObject(p.mesh));
-    });
-    for (const p of portals) {
       const u = p.mesh.material.uniforms;
-      g.localToWorld(u.uP.value.copy(p.at)); u.uN.value.copy(p.n).transformDirection(g.matrixWorld); u.uFull.value.copy(full); u.uDim.value = 1;
-    }
+      u.uP.value.setFromMatrixPosition(p.mesh.matrixWorld); u.uN.value.set(0, 0, 1).transformDirection(p.mesh.matrixWorld); u.uFull.value.copy(full); u.uDim.value = 1;
+      return p.mesh.visible && l.z > 0 && frustum.intersectsBox(bb.setFromObject(p.mesh));
+    });
     if (!todo.length) return;
 
     // offscreen: XR off (else three swaps in the eye cameras, see VolumetricSky), one matrix update for every pass
@@ -300,37 +358,40 @@ export function createNonEuclid(ctx) {
     let root = g; while (root.parent) root = root.parent;
     root.updateMatrixWorld(); const mwa = root.matrixWorldAutoUpdate; root.matrixWorldAutoUpdate = false;
     renderer.xr.enabled = false;
-    // in VR the eyes' view space is metres (the rig's scale): point lights need the engine's xrRender rescale
-    if (xr) { ptLights.length = 0; root.traverse((o) => { if (o.isPointLight || o.isSpotLight) { ptLights.push([o, o.intensity, o.distance]); o.intensity /= U ** o.decay; o.distance /= U; } }); }
+    ptLights.length = 0; root.traverse((o) => { if (o.isPointLight || o.isSpotLight) ptLights.push([o, o.intensity, o.distance]); });
     for (const p of portals) p.mesh.visible = false;
 
     for (const p of todo) {
-      const levels = p.recursive ? P.depth : 1, keep = p.n.clone().negate().transformDirection(g.matrixWorld); // worldT() reuses tmp/tmp2
-      g.localToWorld(tmp.copy(p.at).add(p.T)); const destW = tmp.clone();
-      vcam.layers.set(p.recursive ? CORR : p.to);
+      const levels = levelsOf(p);
+      // the far door's plane, keeping what lies behind it
+      Fd.copy(g.matrixWorld).multiply(p.M).multiply(p.F);
+      destW.setFromMatrixPosition(Fd); keep.set(0, 0, -1).transformDirection(Fd);
+      vcam.layers.set(p.view);
       renderer.shadowMap.autoUpdate = p.to !== MAIN; // the main room's shadows are this frame's already
-      if (p.recursive) p.mesh.visible = true;
+      if (levels > 1) p.mesh.visible = true;
       for (let k = levels; k >= 1; k--) {
         const rt = rtFor(p, k % 2), u = p.mesh.material.uniforms;
         u.tView.value = p.rts[(k + 1) % 2]?.texture ?? null; u.uDim.value = 0.86; // the deeper, the darker
         u.uFull.value.set(full.x * P.res, full.y * P.res); // gl_FragCoord is in target pixels here
-        const m = worldT(p.T, k);
+        worldM(p.M, k, Mk);
         for (const e of eyes) {
           const vp = xr ? e.viewport : q4.set(0, 0, full.x, full.y);
           rt.viewport.set(vp.x * P.res, vp.y * P.res, vp.z * P.res, vp.w * P.res); rt.scissor.copy(rt.viewport); rt.scissorTest = true;
-          vcam.matrixWorld.multiplyMatrices(m, e.matrixWorld); vcam.matrixWorldInverse.copy(vcam.matrixWorld).invert();
+          vcam.matrixWorld.multiplyMatrices(Mk, e.matrixWorld); vcam.matrixWorldInverse.copy(vcam.matrixWorld).invert();
+          // view space is f world units per unit (the rig's scale, then the door's), and three lights in view space
+          const f = vcam.matrixWorld.getMaxScaleOnAxis();
+          for (const [o, i0, d0] of ptLights) { o.intensity = i0 / f ** o.decay; o.distance = d0 / f; }
           vcam.projectionMatrix.copy(e.projectionMatrix);
-          clipPlane.setFromNormalAndCoplanarPoint(keep, destW).applyMatrix4(vcam.matrixWorldInverse);
-          if (!p.recursive) oblique(vcam.projectionMatrix, clipPlane);
+          if (p.view === p.to) oblique(vcam.projectionMatrix, clipPlane.setFromNormalAndCoplanarPoint(keep, destW).applyMatrix4(vcam.matrixWorldInverse));
           vcam.projectionMatrixInverse.copy(vcam.projectionMatrix).invert();
           renderer.setRenderTarget(rt); renderer.clear(); renderer.render(root, vcam);
         }
       }
       p.mesh.visible = false;
-      p.mesh.material.uniforms.tView.value = p.rts[1 % 2].texture; p.mesh.material.uniforms.uDim.value = 1; p.mesh.material.uniforms.uFull.value.copy(full); // level 1 lands in rts[1]
+      const u = p.mesh.material.uniforms; u.tView.value = p.rts[1].texture; u.uDim.value = 1; u.uFull.value.copy(full); // level 1 lands in rts[1]
     }
 
-    for (const p of portals) p.mesh.visible = p.from === space;
+    for (const p of portals) p.mesh.visible = on(p);
     for (const [o, i, d] of ptLights) { o.intensity = i; o.distance = d; }
     renderer.shadowMap.autoUpdate = autoShadow; root.matrixWorldAutoUpdate = mwa;
     renderer.setRenderTarget(prevRT); renderer.xr.enabled = xrOn;
@@ -341,10 +402,10 @@ export function createNonEuclid(ctx) {
     look: { exposure: 1.0, amb: ['#f4f0ea', 1.0], key: ['#fff6ea', 1.0], keyDir: new THREE.Vector3(0.3, 1, 0.6), gi: 0.5,
       grade: { tint: [1, 1, 1], sat: 1.05, contrast: 1.03, sepia: 0, vignette: 0.1 }, bloom: 0.35, bloomThreshold: 1.1 },
     interests: () => [{ p: [BOOTH.x, 1.6, BOOTH.z], label: 'booth' }, { p: [FRAME.x, 1.3, FRAME.z], label: 'frame' }, { p: [0, 1.6, CZ - 3], label: 'corridor' },
-      { p: [-4.5, 1.45, 2.5], label: 'knot' }, { p: [4.5, 1.45, 2.5], label: 'knot' }],
+      { p: [-4.3, 1.2, -3.3], label: 'diorama' }, { p: [-0.8, 0.1, 0.8], label: 'little door' }, { p: [6, 1.5, GZ], label: 'turning corridor' }],
     params: [
       { id: 'res', label: '포털 해상도', doc: 'Resolution of the views through the doors, as a share of the screen (VR: of both eyes). Each visible door costs one more scene render per eye.', min: 0.3, max: 1, step: 0.05, get: () => P.res, set: (x) => { P.res = x; } },
-      { id: 'depth', label: '복도 깊이', doc: 'How many times the endless corridor is rendered inside itself (one scene render per eye each).', type: 'number', min: 1, max: 10, step: 1, get: () => P.depth, set: (x) => { P.depth = Math.round(x); } },
+      { id: 'depth', label: '복도 깊이', doc: 'How many times the endless corridors are rendered inside themselves (one scene render per eye each).', type: 'number', min: 1, max: 10, step: 1, get: () => P.depth, set: (x) => { P.depth = Math.round(x); } },
     ],
     async fit(scene, u) {
       U = u; g.scale.setScalar(U);
@@ -352,18 +413,17 @@ export function createNonEuclid(ctx) {
       const sc = I.sun.shadow.camera; sc.left = sc.bottom = -I.R * U; sc.right = sc.top = I.R * U; sc.near = 1 * U; sc.far = 120 * U; sc.updateProjectionMatrix();
       const sky = await loadSky(renderer, 'assets/polyhaven/hdri/day.hdr', { sat: 1.3 });
       scene.background = sky.tex; scene.environment = sky.env; scene.backgroundIntensity = 1; scene.environmentIntensity = 0.6;
-      // the room's lights (the engine's look among them) light the corridor's recursion too
-      scene.traverse((o) => { if (o.isLight && o.layers.isEnabled(MAIN) && !o.layers.isEnabled(CORR)) { o.layers.enable(CORR); lent.push(o); } });
+      // the room's lights (the engine's look among them) light the corridors' recursions too
+      scene.traverse((o) => { if (o.isLight && o.layers.isEnabled(MAIN) && !o.layers.isEnabled(CORR)) { o.layers.enable(CORR); o.layers.enable(GRAV); lent.push(o); } });
       hadEye.v = false;
     },
     unfit() {
-      for (const o of lent) o.layers.disable(CORR);
+      for (const o of lent) { o.layers.disable(CORR); o.layers.disable(GRAV); }
       lent.length = 0;
+      for (const p of portals) { for (const rt of p.rts) rt?.dispose(); p.rts.length = 0; }
       // back to where the rig was before any door, in the gallery
-      for (const p of portals) for (const rt of p.rts) rt?.dispose();
-      for (const p of portals) p.rts.length = 0;
-      rigRef?.position.sub(offset);
-      home(rigRef?.children.find((c) => c.isCamera));
+      if (base && rigRef) { base.decompose(rigRef.position, rigRef.quaternion, rigRef.scale); rigRef.updateMatrixWorld(true); }
+      home();
     },
     tick(t, { camera }) {
       rigRef = camera.parent;

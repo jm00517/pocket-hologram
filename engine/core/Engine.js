@@ -245,23 +245,26 @@ export function createEngine({ canvas, far = 30000, maxPixelRatio = 2 } = {}) {
         gi.tick(inst?.emitters ?? [], renderer.xr.isPresenting ? 1 / U : 1);
         // the post chain renders into its own targets, which WebXR can't present: in VR draw straight to the headset
         // (tone mapping and the subject's ink lines still apply; AO, bloom and the grade are skipped)
-        if (renderer.xr.isPresenting) xrRender(); else post.render();
+        if (renderer.xr.isPresenting) xrRender(); else viewScaled(() => post.render());
         emit('afterFrame', dt, t);
       });
     },
   };
 
-  // In VR the rig's scale makes view space metres, and three does point/spot falloff and fog in view space:
-  // they'd come out U^decay times too bright and U times too thin. Rescale them for the headset's draw only.
-  const xrRender = () => {
+  // The rig's scale k makes view space k world units per unit (VR: k = U, so view space is metres; a map's portal
+  // may shrink or grow the viewer too), and three does point/spot falloff and fog in view space: they'd come out
+  // k^decay times too bright and k times too thin. Rescale them for the draw.
+  const viewScaled = (draw) => {
+    const k = rig.scale.x;
+    if (k === 1) return draw();
     const undo = [], fog = scene.fog;
-    scene.traverse((o) => { if (o.isPointLight || o.isSpotLight) { undo.push([o, o.intensity, o.distance]); o.intensity /= U ** o.decay; o.distance /= U; } });
-    if (fog?.isFog) { fog.near /= U; fog.far /= U; } else if (fog?.isFogExp2) fog.density *= U;
-    renderer.shadowMap.needsUpdate = true;
-    outline.render(scene, camera);
+    scene.traverse((o) => { if (o.isPointLight || o.isSpotLight) { undo.push([o, o.intensity, o.distance]); o.intensity /= k ** o.decay; o.distance /= k; } });
+    if (fog?.isFog) { fog.near /= k; fog.far /= k; } else if (fog?.isFogExp2) fog.density *= k;
+    draw();
     for (const [o, i, d] of undo) { o.intensity = i; o.distance = d; }
-    if (fog?.isFog) { fog.near *= U; fog.far *= U; } else if (fog?.isFogExp2) fog.density /= U;
+    if (fog?.isFog) { fog.near *= k; fog.far *= k; } else if (fog?.isFogExp2) fog.density /= k;
   };
+  const xrRender = () => viewScaled(() => { renderer.shadowMap.needsUpdate = true; outline.render(scene, camera); });
   // entering VR: stand the viewer xr.distance metres in front of the subject, room scaled to the map
   const xrP = { distance: 1.2 };
   const placeRig = () => { if (!renderer.xr.isPresenting) return; rig.position.copy(toWorld([0, 0, xrP.distance])); rig.scale.setScalar(U); };

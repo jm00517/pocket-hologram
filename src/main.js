@@ -227,16 +227,17 @@ const grips=[0,1].map(i=>{const g=renderer.xr.getControllerGrip(i);g.add(control
   g.addEventListener('connected',e=>{g.userData.src=e.data});g.addEventListener('disconnected',()=>{g.userData.src=null});engine.rig.add(g);return g});
 const mapHands=[];
 // VR locomotion on the sticks: left glides where you look (1.5 m/s), right snaps you 30° around your head.
-// It moves the rig, so walking through a map's doors (portals) works the same as stepping through in the room.
+// It moves the rig, so walking through a map's doors (portals) works the same as stepping through in the room;
+// "up" and "a metre" are the rig's own, since a door may have turned it onto a wall or shrunk it.
 const xrTurn={latch:false};
 function xrMove(dt){
-  const rig=engine.rig,U=engine.units;
+  const rig=engine.rig,k=rig.scale.x,up=new THREE.Vector3(0,1,0).applyQuaternion(rig.quaternion);
   for(const g of grips){const s=g.userData.src,ax=s?.gamepad?.axes;if(!ax||ax.length<4)continue;const x=ax[2],y=ax[3];
     if(s.handedness==='left'&&Math.hypot(x,y)>.15){
-      const f=camera.getWorldDirection(new THREE.Vector3()).setY(0).normalize(),r=new THREE.Vector3(-f.z,0,f.x);
-      rig.position.addScaledVector(f,-y*1.5*U*dt).addScaledVector(r,x*1.5*U*dt)}
+      const f=camera.getWorldDirection(new THREE.Vector3()).projectOnPlane(up).normalize(),r=new THREE.Vector3().crossVectors(f,up);
+      rig.position.addScaledVector(f,-y*1.5*k*dt).addScaledVector(r,x*1.5*k*dt)}
     if(s.handedness==='right'){
-      if(Math.abs(x)>.7&&!xrTurn.latch){xrTurn.latch=true;const head=camera.getWorldPosition(new THREE.Vector3()),q=new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0,1,0),-Math.sign(x)*Math.PI/6);
+      if(Math.abs(x)>.7&&!xrTurn.latch){xrTurn.latch=true;const head=camera.getWorldPosition(new THREE.Vector3()),q=new THREE.Quaternion().setFromAxisAngle(up,-Math.sign(x)*Math.PI/6);
         rig.position.sub(head).applyQuaternion(q).add(head);rig.quaternion.premultiply(q)}
       else if(Math.abs(x)<.3)xrTurn.latch=false}}
 }
