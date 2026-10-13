@@ -14,8 +14,9 @@ import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { loadSky } from '../../engine/index.js';
 import { trees, useWind, noInk } from './crossing/Foliage.js';
+import { hyperGarden, DOOR_DIST } from './Hyperbolic.js';
 
-const MAIN = 0, HALL = 10, ISLAND = 11, CORR = 12, GRAV = 13; // camera layers (1 and 2 are three's per-eye layers in VR)
+const MAIN = 0, HALL = 10, ISLAND = 11, CORR = 12, GRAV = 13, HYP = 14; // camera layers (1 and 2 are three's per-eye layers in VR)
 // CORR, GRAV: the torii corridor / the turning corridor alone (also in MAIN), for their recursion. Seen from k x 6 m back, an oblique near plane drags
 // the far plane in and cuts the far gates off; with only the corridor on the layer there is nothing to clip.
 const HX = 400, IX = -400; // where the hall and the island are
@@ -24,6 +25,8 @@ const F = (x, y, z, ry = 0, rz = 0, s = 1) => new THREE.Matrix4().compose(new TH
 // door frames (door space: opening centred on the origin, facing +z)
 const ALICE = F(-5.98, 1.05, 1.5, Math.PI / 2), DOLL = F(-0.8, 0.105, 0.8, 0, 0, 0.1); // a normal door -> one a tenth that size
 const DIORAMA = F(-4.3, 1.18, -3.29), FRONT = F(0, 2.1, 4.99, 0, 0, 20); // the box's 60 x 21 cm glass -> the 12 x 4.2 m front wall
+const HA = new THREE.Vector3(0, 0, 800); // where the hyperbolic garden's tile space is drawn
+const HDOOR = F(-4, 1.1, -6.79), HGATE = F(HA.x, 1.1, HA.z + DOOR_DIST); // the green door in the back wall -> the garden's gate
 const GX = 6.2, GL = 8, GZ = -4.5; // the turning corridor: x GX..GX+GL, 3 m square around y 1.5, z GZ
 const GEND = F(GX + GL, 1.5, GZ, -Math.PI / 2), GSTART = F(GX, 1.5, GZ, -Math.PI / 2, Math.PI / 2); // its end -> its start, a quarter turned
 const rnd = ((s) => () => (s = (s * 16807) % 2147483647) / 2147483647)(7);
@@ -57,7 +60,7 @@ function gallery(g) {
   // walls with a doorway in the back one (the corridor); front wall behind where you start
   add(g, plaster, [box(0.2, 4.2, 8.05, -6.1, 2.1, -2.975), box(0.2, 4.2, 3.05, -6.1, 2.1, 3.475), box(0.2, 2.1, 0.9, -6.1, 3.15, 1.5),
     box(0.2, 4.2, 1, 6.1, 2.1, -6.5), box(0.2, 4.2, 8, 6.1, 2.1, 1), box(0.2, 1.2, 3, 6.1, 3.6, -4.5), box(12.4, 4.2, 0.2, 0, 2.1, 5.1),
-    box(4.8, 4.2, 0.2, -3.6, 2.1, CZ + 0.1), box(4.8, 4.2, 0.2, 3.6, 2.1, CZ + 0.1), box(2.4, 1.2, 0.2, 0, 3.6, CZ + 0.1),
+    box(1.4, 4.2, 0.2, -5.3, 2.1, CZ + 0.1), box(2.2, 4.2, 0.2, -2.3, 2.1, CZ + 0.1), box(1.2, 2.0, 0.2, -4, 3.2, CZ + 0.1), box(4.8, 4.2, 0.2, 3.6, 2.1, CZ + 0.1), box(2.4, 1.2, 0.2, 0, 3.6, CZ + 0.1),
     box(12.4, 0.2, 12.4, 0, 4.3, -1)], { cast: false });
   // ceiling light panels
   add(g, std('#fff', 1, { emissive: '#fff6ea', emissiveIntensity: 1.6 }), [-3, 0, 3].flatMap((x) => [box(1.6, 0.02, 1.6, x, 4.19, -4), box(1.6, 0.02, 1.6, x, 4.19, 1)]), { cast: false });
@@ -102,6 +105,9 @@ function gallery(g) {
     c.fillStyle = '#f7f1e3'; c.fillRect(0, 0, w, h); c.fillStyle = '#5a3a2a'; c.font = 'italic 64px Georgia, serif'; c.textAlign = 'center'; c.textBaseline = 'middle'; c.fillText('DRINK ME', w / 2, h / 2 + 4);
   }), roughness: 0.8 }));
   sign.applyMatrix4(new THREE.Matrix4().makeTranslation(0, 1.3, 0.03).premultiply(ALICE)); g.add(sign);
+
+  // the green door: a hedge-green frame in the back wall, onto the hyperbolic garden
+  add(g, std('#2f5a2a', 0.7), doorFrame(HDOOR, 1.2, 2.2, 0.1));
 
   // the diorama: a wooden box on a plinth; through its glass, this whole gallery at 1/20, diorama and all
   const wood = std('#6b4a32', 0.6), D = DIORAMA.elements, dx = D[12], dy = D[13], dz = D[14];
@@ -283,7 +289,10 @@ export function createNonEuclid(ctx) {
     portal(g, GEND, GSTART, { w: 3, h: 3, from: MAIN, to: MAIN, view: GRAV, depth: 'depth', onCross: () => twist++ }),
     // walking back out of a turned stretch: its doorway is the end of the stretch before
     portal(g, GSTART.clone().multiply(RY), GEND.clone().multiply(RY), { w: 3, h: 3, from: MAIN, to: MAIN, active: () => twist % 4 !== 0, onCross: () => twist-- }),
+    portal(g, HDOOR, HGATE, { w: 1.2, h: 2.2, from: MAIN, to: HYP }),
   ];
+  const hyp = hyperGarden(g, HA, HYP), Mgate = HGATE.clone().multiply(HDOOR.clone().invert());
+  let gateZ = 0;
   noInk(g);
   ctx.sound('assets/audio/meadow.mp3', { gain: 0.7, at: [IX, 1, I.cz], ref: 10 });
 
@@ -292,7 +301,7 @@ export function createNonEuclid(ctx) {
   const lent = [];
   const cameraOf = () => rigRef?.children.find((c) => c.isCamera);
   // entering or leaving VR the engine places the rig itself: whatever doors it went through are forgotten
-  const home = () => { base = null; space = MAIN; twist = 0; hadEye.v = false; cameraOf()?.layers.set(MAIN); };
+  const home = () => { base = null; space = MAIN; twist = 0; hadEye.v = false; cameraOf()?.layers.set(MAIN); hyp.reset(); };
   renderer.xr.addEventListener('sessionend', home);
   renderer.xr.addEventListener('sessionstart', () => { if (base) rigRef.quaternion.identity(); home(); }); // the engine resets position and scale only
   const prevEye = new THREE.Vector3(), eye = new THREE.Vector3(), hadEye = { v: false };
@@ -328,6 +337,24 @@ export function createNonEuclid(ctx) {
       break;
     }
     prevEye.copy(eye);
+  }
+
+  // in the garden: fold the eye's step into the garden's own motion and put the rig back, so the log map is
+  // always taken where you stand; leave through the curtain in the gate you came in by
+  function garden(camera) {
+    if (space !== HYP) return;
+    const rig = camera.parent;
+    camera.getWorldPosition(eye); g.worldToLocal(eye);
+    const dx = eye.x - HA.x, dz = eye.z - HA.z;
+    hyp.step(dx, dz);
+    rig.position.x -= dx * U; rig.position.z -= dz * U; rig.updateMatrixWorld(true);
+    const e = hyp.inEntry(), was = gateZ; gateZ = e.z;
+    if (!(e.near && was < DOOR_DIST && e.z >= DOOR_DIST && Math.abs(e.x) < 0.6)) return;
+    // back out: where you stand in the gate's room, turned as the walk turned you, then through the door in reverse
+    const E = new THREE.Matrix4().makeTranslation(HA.x + e.x, 0, HA.z + e.z).multiply(new THREE.Matrix4().makeRotationY(-e.phi)).multiply(new THREE.Matrix4().makeTranslation(-HA.x, 0, -HA.z));
+    const W = g.matrixWorld.clone().multiply(Mgate.clone().invert()).multiply(E).multiply(Gi.copy(g.matrixWorld).invert());
+    rig.updateMatrix(); rig.matrix.premultiply(W).decompose(rig.position, rig.quaternion, rig.scale); rig.updateMatrixWorld(true);
+    space = MAIN; camera.layers.set(MAIN); hyp.reset(); hadEye.v = false;
   }
 
   function render(camera) {
@@ -402,7 +429,7 @@ export function createNonEuclid(ctx) {
     look: { exposure: 1.0, amb: ['#f4f0ea', 1.0], key: ['#fff6ea', 1.0], keyDir: new THREE.Vector3(0.3, 1, 0.6), gi: 0.5,
       grade: { tint: [1, 1, 1], sat: 1.05, contrast: 1.03, sepia: 0, vignette: 0.1 }, bloom: 0.35, bloomThreshold: 1.1 },
     interests: () => [{ p: [BOOTH.x, 1.6, BOOTH.z], label: 'booth' }, { p: [FRAME.x, 1.3, FRAME.z], label: 'frame' }, { p: [0, 1.6, CZ - 3], label: 'corridor' },
-      { p: [-4.3, 1.2, -3.3], label: 'diorama' }, { p: [-0.8, 0.1, 0.8], label: 'little door' }, { p: [6, 1.5, GZ], label: 'turning corridor' }],
+      { p: [-4.3, 1.2, -3.3], label: 'diorama' }, { p: [-0.8, 0.1, 0.8], label: 'little door' }, { p: [6, 1.5, GZ], label: 'turning corridor' }, { p: [-4, 1.4, -6.8], label: 'green door' }],
     params: [
       { id: 'res', label: '포털 해상도', doc: 'Resolution of the views through the doors, as a share of the screen (VR: of both eyes). Each visible door costs one more scene render per eye.', min: 0.3, max: 1, step: 0.05, get: () => P.res, set: (x) => { P.res = x; } },
       { id: 'depth', label: '복도 깊이', doc: 'How many times the endless corridors are rendered inside themselves (one scene render per eye each).', type: 'number', min: 1, max: 10, step: 1, get: () => P.depth, set: (x) => { P.depth = Math.round(x); } },
@@ -431,6 +458,7 @@ export function createNonEuclid(ctx) {
       H.drift(t);
       if (renderer.xr.isPresenting) renderer.xr.updateCamera(camera); // this frame's head, before checking the doors
       cross(camera);
+      garden(camera);
       render(camera);
     },
   };
