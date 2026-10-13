@@ -287,6 +287,38 @@ export class Character {
     p.warmup(60);
   }
 
+  // The world reaching her physics (hair, skirt): wind as a push on every dynamic body, fluttering per body
+  // so the twin tails don't swing as one; your VR hands as kinematic spheres that shove what they pass through.
+  // wind: { dir: Vector2 (x, z), amp (1 at 4 m/s), gain }; hands: world Vector3s; radius in world units.
+  // Call before update(). The physics world is world space with the mesh's scale divided out (MMDPhysics).
+  applyWorld({ wind, hands = [], radius = 0.6 }) {
+    const P = this.helper.objects.get(this.mesh)?.physics, A = globalThis.Ammo;
+    if (!P || !A?.btVector3) return;
+    const f = (this._force ??= new A.btVector3()), a = 15 * wind.amp * wind.gain; // 15 units/s² ~ 15% of MMD gravity at 4 m/s
+    if (a > 0) P.bodies.forEach((b, i) => {
+      if (b.params.type === 0) return; // bone-driven
+      const k = a * b.params.weight * (0.65 + 0.35 * Math.sin(this.t * (2.3 + (i % 5) * 0.37) + i));
+      f.setValue(wind.dir.x * k, 0, wind.dir.y * k); b.body.applyCentralForce(f); b.body.activate();
+    });
+    // hands into physics space: world space, unless the mesh has a world scale; then MMDPhysics unparents it at scale 1
+    const m = this.mesh, ws = m.getWorldScale(new THREE.Vector3()).x;
+    const toPhys = Math.abs(ws - 1) < 1e-6 ? (w) => w : (w) => m.worldToLocal(w.clone()).applyQuaternion(m.quaternion).add(m.position);
+    this._hands ??= [];
+    for (let i = 0; i < 2; i++) {
+      let h = this._hands[i];
+      if (!h && hands[i]) { // a sphere in group 15, colliding with everything whose mask lets group 15 in
+        const tr = new A.btTransform(); tr.setIdentity();
+        const info = new A.btRigidBodyConstructionInfo(0, new A.btDefaultMotionState(tr), new A.btSphereShape(radius / ws), new A.btVector3(0, 0, 0));
+        const body = new A.btRigidBody(info); body.setCollisionFlags((body.getCollisionFlags() & ~1) | 2); body.setActivationState(4); // kinematic, not static: its motion pushes
+        P.world.addRigidBody(body, 1 << 15, 0xffff);
+        h = this._hands[i] = { body, tr };
+      }
+      if (!h) continue;
+      const p = hands[i] ? toPhys(hands[i]) : { x: 0, y: -1e4, z: 0 }; // no hand: parked far below
+      f.setValue(p.x, p.y, p.z); h.tr.setOrigin(f); h.body.getMotionState().setWorldTransform(h.tr); // reuse f: Ammo objects aren't garbage-collected
+    }
+  }
+
   update(dt) {
     if (!this.mesh) return;
     this.director.tick(dt);
