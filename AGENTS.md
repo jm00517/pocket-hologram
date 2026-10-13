@@ -26,7 +26,7 @@ from a CDN importmap (`index.html`).
 ## Run and verify
 
 ```sh
-python scripts/server.py                  # http://localhost:3210  (?bg=crossing|classroom|pool|sky|grid, ?perf, ?weather=, ?foliage=)
+python scripts/server.py                  # http://localhost:3210  (?bg=crossing|classroom|pool|sky|grid, ?perf, ?weather=, ?foliage=, ?xremu = fake Quest 2 for VR)
 python engine/bridge/cli.py status        # with the page open in a browser
 python engine/bridge/cli.py describe
 python engine/bridge/cli.py snapshot shot.jpg 960

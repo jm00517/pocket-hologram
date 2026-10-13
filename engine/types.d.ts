@@ -28,6 +28,10 @@ export interface Engine {
   wind: Wind;
   /** 'rig' = app moves the camera in its beforeFrame listener; 'manual' = set by setCamera/the camera command */
   cameraMode: 'rig' | 'manual';
+  /** Parent of `camera`. Identity outside VR; in a WebXR session it stands the viewer `xr.distance` m in front of the subject, scaled by U. */
+  rig: THREE.Group;
+  /** True while a VR headset presents (renderer.xr). The post chain is skipped then: the scene and ink lines draw straight to the headset. */
+  readonly xr: boolean;
   /** scene units per metre = subject height / 1.6 */
   readonly units: number;
   readonly map: string | null;

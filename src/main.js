@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { PointerLockControls } from 'three/addons/controls/PointerLockControls.js';
+import { VRButton } from 'three/addons/webxr/VRButton.js';
 import { createEngine, connectBridge } from '../engine/index.js';
 import { FaceTracker } from './tracking/FaceTracker.js';
 import { OffAxisCamera } from './spatial/OffAxisCamera.js';
@@ -204,16 +205,20 @@ const MODELS=[
 })();
 
 // per frame, before the engine ticks the map and renders: camera rig + character
+const viewer=new THREE.Vector3(),herHead=new THREE.Vector3();
 engine.on('beforeFrame',dt=>{
   // Head motion: critically damped spring (kills tracker jitter) + parallax strength around the rest pose.
   // A physically exact window (parallax 1) swings the far background as much as the head moves.
   const c=calibration.data,P=c.parallax??1,hl=Math.max(.001,c.smoothing??0);
   dampSpring(viewEye,viewVel,eye,hl,dt);const rest=restEye;
   const ve={x:rest.x+(viewEye.x-rest.x)*P,y:rest.y+(viewEye.y-rest.y)*P,z:rest.z+(viewEye.z-rest.z)*P};
-  if(engine.cameraMode==='rig'){if(freeCam.on)flyFreeCam(dt);else{const vp=viewport();spatial.update({x:(ve.x-vp.ox)*K,y:(ve.y-vp.oy)*K,z:ve.z*K})}}
+  // in VR the headset is the camera; the window rig (tracking, off-axis) stands down
+  if(engine.xr){}else if(engine.cameraMode==='rig'){if(freeCam.on)flyFreeCam(dt);else{const vp=viewport();spatial.update({x:(ve.x-vp.ox)*K,y:(ve.y-vp.oy)*K,z:ve.z*K})}}
   if(character){
-    const inst=engine.mapInstance,present=lastFace===null?null:performance.now()-lastFace<1500;
-    character.life.update(dt,{viewer:camera.position,present,close:present&&ve.z<restEye.z*.62,map:engine.map,night:(inst?.sky?.values.elev??30)<-6,
+    const inst=engine.mapInstance,xr=engine.xr,present=xr?true:lastFace===null?null:performance.now()-lastFace<1500;
+    camera.getWorldPosition(viewer); // the camera sits in engine.rig (scaled in VR)
+    const close=xr?viewer.distanceTo(character.bones['頭'].getWorldPosition(herHead))<.45*engine.units:present&&ve.z<restEye.z*.62;
+    character.life.update(dt,{viewer,present,close,map:engine.map,night:(inst?.sky?.values.elev??30)<-6,
       interests:(inst?.interests?.()??[]).map(i=>({p:engine.toWorld(i.p),label:i.label}))});
     character.update(dt);const c=character.bones['センター'].getWorldPosition(blob.position);stage.worldToLocal(c);c.y=.01}
   debugPanel.textContent=`filtered eye (m)
@@ -226,4 +231,10 @@ HFOV ${calibration.data.cameraHFovDeg.toFixed(1)}°
 K ${K.toFixed(1)}`;
 });
 engine.start();
+// VR: an ENTER VR button when a headset is there (Quest via Link/Air Link + Chrome/Edge on this PC).
+// ?xremu fakes a Quest 2 in the browser (Meta's IWER) to test without one.
+(async()=>{
+  if(query.has('xremu')){const {XRDevice,metaQuest2}=await import('https://cdn.jsdelivr.net/npm/iwer@2.4.0/build/iwer.module.min.js');window.xrDevice=new XRDevice(metaQuest2);window.xrDevice.installRuntime({forceInstall:true})}
+  if(await navigator.xr?.isSessionSupported('immersive-vr').catch(()=>false))document.body.appendChild(VRButton.createButton(renderer));
+})();
 connectBridge(engine);

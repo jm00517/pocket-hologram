@@ -179,7 +179,7 @@ const skyFrag = /* glsl */`${COMMON}${LIGHT}
     return c * uSkyGain;
   }
   void main() {
-    vec4 v = uInvProj * vec4(vUv * 2.0 - 1.0, 1.0, 1.0);
+    vec4 v = uInvProj * vec4(vUv * 2.0 - 1.0, -1.0, 1.0); // near plane: a VR headset projection has its far plane at infinity
     vec3 dir = normalize((uCamRot * vec4(v.xyz / v.w, 0.0)).xyz);
     vec3 o = vec3(0.0, 2.0, 0.0);
     float mu = dot(dir, uSun), j = fract(52.9829189 * fract(dot(gl_FragCoord.xy, vec2(0.06711056, 0.00583715))) + uFrame * 0.618034);
@@ -289,17 +289,23 @@ export function createVolumetricSky(renderer, { wind } = {}) {
 
   // the dome shows the half-res sky behind everything; other cameras (GI probe, reflections) get a flat stand-in
   const dome = new THREE.Mesh(new THREE.SphereGeometry(1, 32, 16), new THREE.ShaderMaterial({
-    uniforms: { tSky: { value: skyRT.texture }, uRes: { value: new THREE.Vector2(1, 1) }, uDirect: { value: 1 }, uAmbHigh: U.uAmbHigh, uAmbLow: U.uAmbLow },
+    uniforms: { tSky: { value: skyRT.texture }, uVP: U.uPrevViewProj, uDirect: { value: 1 }, uAmbHigh: U.uAmbHigh, uAmbLow: U.uAmbLow },
     vertexShader: 'varying vec3 vDir; void main(){ vDir = position; gl_Position = (projectionMatrix * vec4(mat3(viewMatrix) * position, 1.0)).xyww; }',
-    fragmentShader: `uniform sampler2D tSky; uniform vec2 uRes; uniform float uDirect; uniform vec3 uAmbHigh, uAmbLow; varying vec3 vDir;
-      void main(){ vec3 d = normalize(vDir);
-        gl_FragColor = vec4(uDirect > 0.5 ? mix(uAmbLow, uAmbHigh * 1.4, smoothstep(-0.2, 0.4, d.y)) : texture2D(tSky, gl_FragCoord.xy / uRes).rgb, 1.0); }`,
+    // the sky image is looked up by direction through the camera it was rendered for (uVP, this frame's after
+    // tick), not by screen pixel: in VR each eye sees it through its own view, off the shared mono render
+    fragmentShader: `uniform sampler2D tSky; uniform mat4 uVP; uniform float uDirect; uniform vec3 uAmbHigh, uAmbLow; varying vec3 vDir;
+      void main(){ vec3 d = normalize(vDir); vec4 c = uVP * vec4(d, 0.0);
+        vec3 grad = mix(uAmbLow, uAmbHigh * 1.4, smoothstep(-0.2, 0.4, d.y));
+        gl_FragColor = vec4(uDirect > 0.5 || c.w <= 0.0 ? grad : texture2D(tSky, c.xy / c.w * 0.5 + 0.5).rgb, 1.0); // in VR this draws straight to the headset: tone map and encode like the post chain's output pass
+        #include <tonemapping_fragment>
+        #include <colorspace_fragment>
+      }`,
     side: THREE.BackSide, depthWrite: false,
   }));
   dome.frustumCulled = false; dome.renderOrder = -1e6; dome.userData.noAO = true;
   dome.material.userData.outlineParameters = { visible: false };
   let mainCam = null;
-  dome.onBeforeRender = (r, s, cam) => { dome.material.uniforms.uDirect.value = cam === mainCam ? 0 : 1; };
+  dome.onBeforeRender = (r, s, cam) => { dome.material.uniforms.uDirect.value = cam === mainCam || (r.xr.isPresenting && r.xr.getCamera().cameras.includes(cam)) ? 0 : 1; };
 
   // time of day, keyed on the sun's elevation: [night, dusk, day] for each sky colour
   const C = (r, g, b) => new THREE.Color(r, g, b), WHITE = C(1, 1, 1);
@@ -462,6 +468,10 @@ export function createVolumetricSky(renderer, { wind } = {}) {
       U.uGapOff.value.set(wv.x / wl, 0, wv.z / wl).multiplyScalar((ph - 0.5) * P.gapDrift);
       U.uSunGap.value = P.sunGap * Math.pow(Math.sin(Math.PI * ph), 0.6);
       U.uTime.value += simDt;
+      // offscreen passes with XR off: while a headset presents, renderer.render() swaps any camera for the eye
+      // cameras, even into a render target. The quads came out through the eyes, and the headset projection was
+      // written into FullScreenQuad's shared ortho camera, which blacked out every post pass after the session
+      const xrOn = renderer.xr.enabled; renderer.xr.enabled = false;
       fluid.step(simDt, wind?.vector ?? new THREE.Vector3(9, 0, -3), { cover: P.cover, stir: P.stir, conf: P.swirl, tau: P.life });
       U.tFluid.value = fluid.texture; U.uWindOff.value.copy(fluid.windOffset);
       camera.updateMatrixWorld();
@@ -471,12 +481,12 @@ export function createVolumetricSky(renderer, { wind } = {}) {
       [skyRT, histRT] = [histRT, skyRT]; // last frame's result becomes the history
       if (skyRT.width !== w || skyRT.height !== h) { skyRT.setSize(w, h); histRT.setSize(w, h); U.uBlend.value = 0; }
       U.tHistory.value = histRT.texture; U.uFrame.value = (U.uFrame.value + 1) % 64;
-      dome.material.uniforms.uRes.value.copy(size);
       const prev = renderer.getRenderTarget();
       renderer.setRenderTarget(shadowRT); shadowQuad.render(renderer);
       renderer.setRenderTarget(skyRT); skyQuad.render(renderer);
       renderer.setRenderTarget(probeRT); probeQuad.render(renderer);
       renderer.setRenderTarget(prev);
+      renderer.xr.enabled = xrOn;
       dome.material.uniforms.tSky.value = skyRT.texture;
       U.uPrevViewProj.value.copy(camera.projectionMatrix).multiply(new THREE.Matrix4().copy(U.uCamRot.value).transpose());
       U.uBlend.value = 0.88;

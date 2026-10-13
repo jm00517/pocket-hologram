@@ -20,7 +20,12 @@ export function createEngine({ canvas, far = 30000, maxPixelRatio = 2 } = {}) {
   renderer.toneMapping = THREE.NeutralToneMapping; renderer.toneMappingExposure = 1; // applied by the post chain's OutputPass
   const scene = new THREE.Scene(); scene.background = new THREE.Color(0x03050a);
   const camera = new THREE.PerspectiveCamera(45, 1, 0.01, far);
-  const stage = new THREE.Group(); scene.add(stage); // floor point under the subject; maps and the subject live here
+  // VR (WebXR): the headset drives the camera inside `rig`. Outside VR the rig stays at identity, so the camera's
+  // local position is its world position, as the app expects. In VR the rig stands the viewer in front of the
+  // subject and is scaled by U, so a metre of the room is a metre of the map (MMD units would make her 20 m tall).
+  renderer.xr.enabled = true; renderer.xr.setReferenceSpaceType('local-floor');
+  const rig = new THREE.Group(); rig.add(camera);
+  const stage = new THREE.Group(); scene.add(stage, rig); // floor point under the subject; maps and the subject live here
   const ambient = new THREE.AmbientLight(0xaaaaaa, 2); scene.add(ambient);
   const gi = createGI(renderer), key = gi.key;
   const outline = new OutlineEffect(renderer); // MMD-style ink lines, subject only (maps set outlineParameters.visible=false)
@@ -88,6 +93,9 @@ export function createEngine({ canvas, far = 30000, maxPixelRatio = 2 } = {}) {
     get map() { return active; },
     get mapInstance() { return inst; },
     get subject() { return subject; },
+    rig,
+    /** true while a VR headset is presenting */
+    get xr() { return renderer.xr.isPresenting; },
     on(ev, f) { (listeners[ev] ??= new Set()).add(f); return () => listeners[ev].delete(f); },
 
     registerMap(def) {
@@ -186,19 +194,30 @@ export function createEngine({ canvas, far = 30000, maxPixelRatio = 2 } = {}) {
     resize(w = innerWidth, h = innerHeight) { renderer.setSize(w, h, false); post.setSize(w, h, renderer.getPixelRatio()); },
     start() {
       const clock = new THREE.Clock();
-      const frame = () => {
+      // setAnimationLoop, not requestAnimationFrame: in VR the headset's own frame loop must drive rendering
+      renderer.setAnimationLoop(() => {
         const dt = Math.min(clock.getDelta(), 0.1), t = clock.elapsedTime;
         emit('beforeFrame', dt, t);
         wind.tick(dt, t);
         inst?.tick?.(t, { dt, camera });
         gi.tick(inst?.emitters ?? []);
-        post.render();
+        // the post chain renders into its own targets, which WebXR can't present: in VR draw straight to the headset
+        // (tone mapping and the subject's ink lines still apply; AO, bloom and the grade are skipped)
+        if (renderer.xr.isPresenting) { renderer.shadowMap.needsUpdate = true; outline.render(scene, camera); } else post.render();
         emit('afterFrame', dt, t);
-        requestAnimationFrame(frame);
-      };
-      frame();
+      });
     },
   };
+
+  // entering VR: stand the viewer xr.distance metres in front of the subject, room scaled to the map
+  const xrP = { distance: 1.2 };
+  const placeRig = () => { if (!renderer.xr.isPresenting) return; rig.position.copy(toWorld([0, 0, xrP.distance])); rig.scale.setScalar(U); };
+  params.define([{ id: 'xr.distance', label: 'VR 거리', doc: 'In VR: how far (m) in front of the character you stand when the session starts (walk around from there).', type: 'number', min: 0.3, max: 6, step: 0.05, get: () => xrP.distance, set: (v) => { xrP.distance = v; placeRig(); } }]);
+  renderer.xr.addEventListener('sessionstart', () => {
+    placeRig();
+    camera.near = 0.05; camera.far = far / U; // the rig's scale makes view space metres
+  });
+  renderer.xr.addEventListener('sessionend', () => { rig.position.set(0, 0, 0); rig.scale.setScalar(1); rig.quaternion.identity(); camera.near = 0.05 * U; camera.far = far; camera.updateProjectionMatrix(); });
 
   command('describe', 'Everything an agent needs: maps, params (with ranges/docs/values), commands, state.', {}, () => engine.describe());
   command('state', 'Current map, every param value, camera.', {}, () => engine.state());
