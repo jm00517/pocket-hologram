@@ -7,7 +7,7 @@ resident process that renders a score JSON to WAV in ~30 ms per mora after warm-
 
     synth('こんにちは') -> (wav bytes, marks)      marks: [{'v': 'o', 't': 0.0}, ...] for lip sync
 """
-import io, json, math, os, subprocess, tempfile, threading, wave
+import array, io, json, math, os, subprocess, tempfile, threading, wave
 from pathlib import Path
 
 import teto_tts
@@ -137,6 +137,27 @@ def score_flat(text):
     return {'notes': notes}, marks
 
 
+def _trim(frames, params, after):
+    """The engine pads the part with half a second of silence: cut it, so clauses played back to back don't gap.
+    Cut where the voice has died away, not at the last note's end: the final vowel rings on past it (cutting at
+    a fixed 0.12 s clipped the ends of lines). Then a 15 ms fade, so the cut doesn't click."""
+    a, ch, sr = array.array('h', frames), params.nchannels, params.framerate
+    win = sr // 100  # 10 ms
+    peak = max(1, max(abs(v) for v in a))
+    end = len(a) // ch
+    for i in range(end - win, int(after * sr), -win):  # last 10 ms window still above -40 dB of the peak
+        if max(abs(v) for v in a[i * ch:(i + win) * ch]) > peak * 0.01:
+            end = min(end, i + win + sr // 50)
+            break
+    else:
+        end = min(end, int((after + 0.12) * sr))
+    fade = sr * 15 // 1000
+    for j in range(max(0, end - fade), end):
+        k = (end - j) / fade
+        for c in range(ch): a[j * ch + c] = int(a[j * ch + c] * k)
+    return a[:end * ch].tobytes()
+
+
 def synth(text):
     sc, marks = score(text)
     if not sc['notes']:
@@ -148,11 +169,9 @@ def synth(text):
         if not r.get('ok'):
             raise RuntimeError(r.get('error', 'render failed'))
         # read inside the lock: every render writes the same file, and a parallel request would overwrite it
-        # the engine pads the part with half a second of silence: cut it, so clauses played back to back don't gap
-        last = sc['notes'][-1]
         with wave.open(str(OUT)) as w:
-            keep = int(((last['start'] + last['duration']) / TPS + 0.12) * w.getframerate())
-            params, frames = w.getparams(), w.readframes(keep)
+            params, frames = w.getparams(), w.readframes(w.getnframes())
+    frames = _trim(frames, params, (sc['notes'][-1]['start'] + sc['notes'][-1]['duration']) / TPS)
     buf = io.BytesIO()
     with wave.open(buf, 'wb') as o:
         o.setparams(params); o.writeframes(frames)
@@ -171,5 +190,10 @@ if __name__ == '__main__':
     assert n[1]['duration'] > n[2]['duration'] and p[0]['tick'] == 0 and sc['controllers'][0]['type'] == 'Dynamics', n
     q = score('いいてんき？')[0]['pitch']; s = score('いいてんき')[0]['pitch']
     assert q[-1]['value'] > s[-1]['value'] + 300, (q[-1], s[-1])  # a question ends higher
+    # the cut follows the sound: a tone ringing to 0.5 s with the last note ending at 0.3 s keeps its ring, not more
+    P = wave._wave_params(1, 2, 44100, 44100, 'NONE', 'not compressed')
+    tone = array.array('h', [int(8000 * math.sin(i * 0.06)) if i < 22050 else 0 for i in range(44100)]).tobytes()
+    kept = len(_trim(tone, P, 0.3)) // 2 / 44100
+    assert 0.5 <= kept <= 0.53, kept
     t0 = time.time(); wav, marks = synth(sys.argv[1] if len(sys.argv) > 1 else 'こんにちは、ミクです')
     print(json.dumps({'ms': round((time.time() - t0) * 1000), 'bytes': len(wav), 'morae': len(marks)}))

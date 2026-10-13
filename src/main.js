@@ -95,8 +95,9 @@ async function loadCharacter(url,manager){
   const my=++loadSeq,c=new Character();const mesh=await c.load(url,manager);
   if(my!==loadSeq){c.dispose();return}
   clearModels();character=c;window.character=c; // console / future LLM hook
-  c.life=new Life(c,{say:t=>window.chat?.say(t),P:lifeP});
-  c.touch=new Touch(c,{say:t=>window.chat?.say(t),P:lifeP});
+  const aside=t=>window.chat?.say(t,{interrupt:false}); // her own lines never cut off one she's saying
+  c.life=new Life(c,{say:aside,P:lifeP});
+  c.touch=new Touch(c,{say:aside,P:lifeP});
   c.bones['頭'].add(voice3d);
   const h=new THREE.Box3().setFromObject(mesh).getSize(new THREE.Vector3()).y;
   charHeight=h;

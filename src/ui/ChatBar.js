@@ -61,16 +61,18 @@ export function mountChatBar(getBehavior, controlsRoot, { route } = {}) {
   // Voice via the local server (scripts/server.py /api/tts: Miku V6 or Teto); falls back to browser TTS.
   // Clause by clause: the first clause plays while the next is still synthesising, so the wait is one
   // clause (~0.3 s for Miku) instead of the whole sentence (~1 s).
-  let voice = null, turn = 0;
+  let voice = null, turn = 0, talking = false;
   const tts = (text) => fetch('api/tts', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text }) })
     .then((r) => (r.ok ? r.json() : Promise.reject(r.status)));
-  async function say(text) {
+  /** interrupt: false for her own asides and reactions, which wait their turn instead of cutting a line off */
+  async function say(text, { interrupt = true } = {}) {
     const beh = b();
-    if (!beh) return;
+    if (!beh || (!interrupt && talking)) return;
     // a clause of punctuation alone ('!?' -> '?') has nothing to sing: Miku's synth answers 400 to it
     const me = ++turn, clauses = text.split(/(?<=[、。！？!?,.])/).map((s) => s.trim()).filter((s) => /[\p{L}\p{N}]/u.test(s));
     if (!clauses.length) return;
     let i = 0;
+    talking = true;
     try {
       let next = tts(clauses[0]);
       for (; i < clauses.length; i++) {
@@ -85,10 +87,10 @@ export function mountChatBar(getBehavior, controlsRoot, { route } = {}) {
         await voice.play();
         await ended;
       }
-      if (me === turn) { beh.stopSpeaking(); beh.setState('idle'); }
+      if (me === turn) { beh.stopSpeaking(); beh.setState('idle'); talking = false; }
       return;
     } catch { /* no server / no voice library */ }
-    if (me === turn) browserSay(clauses.slice(i).join('')); // only what wasn't said yet, and only if this is still the turn
+    if (me === turn) { talking = false; browserSay(clauses.slice(i).join('')); } // only what wasn't said yet, and only if this is still the turn
   }
   function browserSay(text) {
     const beh = b();
