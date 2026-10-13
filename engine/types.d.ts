@@ -43,6 +43,8 @@ export interface Engine {
   on(event: 'map', fn: (id: string | null) => void): () => void;
   /** lights/look were replaced wholesale (map switch, weather change): UIs re-read values, drop undo */
   on(event: 'baseline', fn: () => void): () => void;
+  /** a map called ctx.cue(): p is already in world units */
+  on(event: 'cue', fn: (c: Cue & { p: THREE.Vector3 }) => void): () => void;
 
   registerMap(def: MapDef): Engine;
   maps(): { id: string; label: string; doc?: string; active: boolean }[];
@@ -146,6 +148,8 @@ export interface MapContext {
   captureGI(): void;
   /** the map replaced its lights/sky on its own (e.g. weather param): re-shoots GI and emits 'baseline' */
   changed(): void;
+  /** Something happened worth a look (a train arriving, a chime). The app's character can turn to it. */
+  cue(c: Cue): void;
 }
 export interface MapInstance {
   /** authored in metres; the engine adds it to the stage. fit() scales it by U. */
@@ -269,3 +273,16 @@ export function connectBridge(engine: Engine, opts?: { url?: string }): { stop()
 export function defineMap(def: MapDef): MapDef;
 export function createEngine(opts: EngineOptions): Engine;
 export function createParams(): Params;
+
+/** A moment in a map (MapContext.cue). */
+export interface Cue {
+  /** where, in stage metres */
+  p: Vec3;
+  label: string;
+  /** what she may say about it (hiragana), said only sometimes */
+  line?: string;
+  /** a motion to play (MotionDirector name), e.g. 'wave' */
+  gesture?: string;
+  /** seconds to keep looking (default 2.5) */
+  hold?: number;
+}

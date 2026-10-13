@@ -60,6 +60,8 @@ export function createEngine({ canvas, far = 30000, maxPixelRatio = 2 } = {}) {
     captureGI: () => captureGI(),
     /** call when a map changed its lights/sky by itself (e.g. a weather switch): re-shoots GI, tells UIs */
     changed() { captureGI(); emit('baseline'); },
+    /** something happened in the map worth a look (a train, a chime): { p: stage metres, label, line?, gesture? } -> 'cue' event */
+    cue(c) { emit('cue', { ...c, p: toWorld(c.p) }); },
   };
 
   const coreParams = [

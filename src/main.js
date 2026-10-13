@@ -35,7 +35,8 @@ for(const m of allMaps({crossing:{weather:query.get('weather')||'sunset',foliage
 let bg=query.get('bg')||'crossing'; // map id, or 'grid' = no map (calibration room)
 engine.setMap(bg==='grid'?null:bg);
 // no map: the calibration grid room and a contact blob stand in for a world
-engine.on('map',id=>{if(chamber)chamber.visible=!id;blob.material.opacity=id?0:1;bgSel.value=id??'grid'});
+engine.on('cue',c=>character?.life.notice(c));
+engine.on('map',id=>{character?.life.mapChanged(id);if(chamber)chamber.visible=!id;blob.material.opacity=id?0:1;bgSel.value=id??'grid'});
 
 // Scene units per meter. MMD physics breaks on scaled meshes, so instead of shrinking the model
 // we grow the screen/eye/room by K. Generic (glTF/FBX) models use K=1 and get scaled themselves.
@@ -215,7 +216,8 @@ engine.on('beforeFrame',dt=>{
   // in VR the headset is the camera; the window rig (tracking, off-axis) stands down
   if(engine.xr){}else if(engine.cameraMode==='rig'){if(freeCam.on)flyFreeCam(dt);else{const vp=viewport();spatial.update({x:(ve.x-vp.ox)*K,y:(ve.y-vp.oy)*K,z:ve.z*K})}}
   if(character){
-    const inst=engine.mapInstance,xr=engine.xr,present=xr?true:lastFace===null?null:performance.now()-lastFace<1500;
+    // VR: the headset off your face (session hidden) counts as away, so putting it back on is a return
+    const inst=engine.mapInstance,xr=engine.xr,present=xr?renderer.xr.getSession()?.visibilityState!=='hidden':lastFace===null?null:performance.now()-lastFace<1500;
     camera.getWorldPosition(viewer); // the camera sits in engine.rig (scaled in VR)
     const close=xr?viewer.distanceTo(character.bones['頭'].getWorldPosition(herHead))<.45*engine.units:present&&ve.z<restEye.z*.62;
     character.life.update(dt,{viewer,present,close,map:engine.map,night:(inst?.sky?.values.elev??30)<-6,
@@ -231,6 +233,32 @@ HFOV ${calibration.data.cameraHFovDeg.toFixed(1)}°
 K ${K.toFixed(1)}`;
 });
 engine.start();
+addEventListener('pagehide',()=>character?.life.save());
+
+// One clock for every world: the real time of day (this browser's clock, latitude time.lat) drives the sky maps'
+// sun (`<map>.elev`) and the crossing's weather (day / sunset / night). Moving a sun by hand turns it off.
+const clock={real:1,lat:37.5,set:{}};
+engine.params.define([
+  {id:'time.real',label:'실제 시각',doc:"Sun follows the real time of day (sky maps' elevation, the crossing's day/sunset/night). Setting a map's sun by hand turns this off.",min:0,max:1,step:1,get:()=>clock.real,set:v=>{clock.real=v;tickClock()}},
+  {id:'time.lat',label:'위도',doc:'Latitude (deg) for the real-time sun: how high it climbs and how long the evening lasts. Default Seoul.',min:-66,max:66,step:.5,get:()=>clock.lat,set:v=>{clock.lat=v;tickClock()}},
+]);
+function sunElevation(d=new Date()){ // ponytail: solar time = clock time (no longitude/equation of time), off by up to ~40 min
+  const R=Math.PI/180,doy=(d-new Date(d.getFullYear(),0,0))/864e5,dec=23.44*Math.sin(2*Math.PI*(284+doy)/365)*R;
+  const H=(d.getHours()+d.getMinutes()/60-12)*15*R,lat=clock.lat*R;
+  return Math.asin(Math.sin(lat)*Math.sin(dec)+Math.cos(lat)*Math.cos(dec)*Math.cos(H))/R;
+}
+async function tickClock(){
+  const id=engine.map;if(!clock.real||!id)return;
+  const e=Math.max(-18,Math.round(sunElevation()*2)/2),p=`${id}.elev`,has=engine.params.list().some(d=>d.id===p);
+  if(has){
+    const cur=engine.params.get(p);
+    if(clock.set[p]!==undefined&&Math.abs(cur-clock.set[p])>.6){clock.real=0;return} // someone moved the sun: hands off
+    if(cur!==e)await engine.params.set(p,e);clock.set[p]=e;
+  }
+  if(id==='crossing'){const w=e>12?'day':e>-4?'sunset':'night';if(clock.weather!==w){clock.weather=w;await engine.params.set('crossing.weather',w)}}
+}
+engine.on('map',()=>{clock.set={};clock.weather=null;setTimeout(tickClock,500)});
+setInterval(tickClock,20000);
 // VR: an ENTER VR button when a headset is there (Quest via Link/Air Link + Chrome/Edge on this PC).
 // ?xremu fakes a Quest 2 in the browser (Meta's IWER) to test without one.
 (async()=>{

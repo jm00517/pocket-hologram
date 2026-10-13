@@ -497,6 +497,9 @@ export function createPool(renderer, wind) {
     group: g,
     look: { exposure: 1.0, amb: ['#b4b4b4', 1.1], key: ['#ffffff', 0.8], keyDir: new THREE.Vector3(0.4, 0.8, 1), gi: 0.6,
       grade: { tint: [1, 1, 1.02], sat: 1.1, contrast: 1.04, sepia: 0, vignette: 0.12 }, bloom: 0.3, bloomThreshold: 1.15 },
+    // what she looks at (Life.js), stage metres
+    interests: () => [{ p: [0, 2, PZ0 - 5], label: 'flags' }, { p: [2, WY, -9], label: 'water' }, { p: [-3, 1.4, FENCE_Z], label: 'pace clock' },
+      { p: [18.95, 17.4, -33], label: 'school clock' }, { p: [-8.8, 1.6, -13], label: 'tent' }, { p: [8.6, 1.8, -13.5], label: 'lifeguard chair' }],
     async fit(scene, U) {
       g.scale.setScalar(U);
       const cam = sun.shadow.camera;

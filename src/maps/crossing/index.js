@@ -27,8 +27,15 @@ export const crossingMap = ({ weather = 'sunset', foliage = 'full' } = {}) => de
       focus.copy(p); crossing.group.position.copy(p).multiplyScalar(-U); crossing.setFocus(p);
       clearTimeout(gi); gi = setTimeout(ctx.captureGI, 300); // re-shoot her bounce light where she landed
     };
+    // what she looks at (Life.js), in crossing metres -> stage metres (the crossing slides under her when she walks)
+    const at = (x, y, z) => [x - focus.x, y - focus.y, z - focus.z];
+    const SPOTS = [['vending', 4.0, 1.4, -3.0], ['vending', -4.35, 1.4, -2.2], ['sea', -6, 0.5, -70], ['track', -18, 1.5, -11], ['mirror', 3, 2.2, -8], ['sky', 25, 40, -120]];
+    crossing.onTrain = (k) => ctx.cue(k === 'coming'
+      ? { p: at(-35, 2, -11), label: 'train coming', line: 'あ、でんしゃ！', hold: 3 }
+      : { p: at(0, 2, -11), label: 'train passing', gesture: 'wave', line: 'ばいばーい', hold: 3.5 });
     return {
       group: crossing.group,
+      interests: () => SPOTS.map(([label, x, y, z]) => ({ p: at(x, y, z), label })),
       emitters: REFS.emitters,
       walkable: REFS.walkable,
       moveTo,

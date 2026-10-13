@@ -266,7 +266,24 @@ function outside(g) {
   g.add(new THREE.Mesh(mergeGeometries(tp), trees));
 }
 
-export function createClassroom(renderer, wind) {
+// the school chime (Westminster quarters), synthesised: E C D G / G D E C, bell-like partials
+function chime() {
+  try {
+    const a = (chime.ctx ??= new AudioContext()); a.resume?.();
+    const notes = [330, 262, 294, 196, 196, 294, 330, 262], t0 = a.currentTime + 0.05;
+    notes.forEach((f, i) => {
+      const at = t0 + i * 0.75 + (i >= 4 ? 0.6 : 0);
+      for (const [m, gain] of [[1, 0.09], [2.76, 0.02], [5.4, 0.008]]) {
+        const o = a.createOscillator(), v = a.createGain();
+        o.frequency.value = f * m; v.gain.setValueAtTime(gain, at); v.gain.exponentialRampToValueAtTime(0.0001, at + 2.2);
+        o.connect(v).connect(a.destination); o.start(at); o.stop(at + 2.3);
+      }
+    });
+  } catch {} // no audio before a click: she still looks up at the speaker
+}
+
+/** cue: MapContext.cue (the chime turns her head) */
+export function createClassroom(renderer, wind, cue) {
   const g = new THREE.Group(); g.name = 'classroom'; g.visible = false;
   const bays = shell(g); front(g); desks(g); rest(g); outside(g);
   const fx = shafts(g, bays), curtainTime = curtains(g, bays, wind);
@@ -282,6 +299,7 @@ export function createClassroom(renderer, wind) {
   const bounce = new THREE.PointLight('#ffb27a', 0, 9, 2); bounce.position.set(1.5, 0.6, -2.5); // sunlit floor glow
   g.add(sun, target, fill, bounce);
   noInk(g);
+  let lastQuarter = null;
   return {
     group: g,
     // what main applies to the character lights and the post chain
@@ -300,6 +318,15 @@ export function createClassroom(renderer, wind) {
       scene.backgroundRotation.set(0, a, 0); scene.environmentRotation.set(0, a, 0);
       scene.backgroundIntensity = 0.85; scene.environmentIntensity = 0.3;
     },
-    tick(t) { curtainTime.value = t; fx.dust.uniforms.uTime.value = t; },
+    // what she looks at (Life.js), stage metres
+    interests: () => [{ p: [0, 1.6, Z0], label: 'board' }, { p: [0, 2.68, Z0], label: 'clock' }, { p: [X0, 1.7, -3], label: 'window' },
+      { p: [-40, 2, -20], label: 'yard' }, { p: [X1, 1.2, -0.6], label: 'door' }],
+    tick(t) {
+      curtainTime.value = t; fx.dust.uniforms.uTime.value = t;
+      // the chime on the real clock's quarter hours, like a school's bells keep the day
+      const q = Math.floor(Date.now() / 900000);
+      if (lastQuarter !== null && q !== lastQuarter) { chime(); cue?.({ p: [2.9, 2.75, Z0], label: 'chime', line: 'あ、チャイム', hold: 3.5 }); }
+      lastQuarter = q;
+    },
   };
 }

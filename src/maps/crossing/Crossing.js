@@ -653,6 +653,12 @@ export function createCrossing(renderer) {
       for (let i = 0; i < REFS.redLights.length; i++) REFS.redLights[i].intensity = active && (beat + i) % 2 ? this.redPower ?? 0 : 0;
       if (audio && active && beat !== lastBeat) bell(audio, audio.currentTime);
       lastBeat = beat;
+      // the two moments worth turning for: the bells start, and the train's nose reaches the road
+      if (this.lastHead !== undefined) { // not on the first frame: the map may open mid-pass
+        if (active && !this.wasActive) this.onTrain?.('coming');
+        if (head >= 0 && this.lastHead < 0) this.onTrain?.('passing');
+      }
+      this.wasActive = active; this.lastHead = head;
     },
   };
 }

@@ -5,7 +5,9 @@
 //   (MapInstance.interests), and back to you, often with a small smile; a blink on big shifts;
 // - presence, from the webcam tracking: greets you when you come back, gets shy if you lean in close,
 //   looks around for you while you're gone;
-// - now and then says something to herself that fits the map and the hour.
+// - now and then says something to herself that fits the map and the hour;
+// - turns to what happens in the map (MapContext.cue: the train, the chime) on its own clock, not yours;
+// - remembers (localStorage): how long you were away picks the greeting, and she notices a change of place.
 import * as THREE from 'three';
 
 // Hiragana, for the Japanese voices (Miku V6, Teto). Keep them short: they are asides, not speeches.
@@ -19,6 +21,11 @@ const LINES = {
   night: ['ほし、きれい…', 'よる、しずかだね'],
 };
 const GREET = ['あ、おかえり！', 'やっほー！', 'あ、きた！'];
+// the first greeting of a visit, by how long you were away
+const WELCOME = [[0, ['はじめまして！ミクだよ']], [60, GREET], [6 * 3600, ['おかえり！まってたよ']], [86400, ['ひさしぶり！あいたかった']], [7 * 86400, ['ずっと、まってたんだよ…']]];
+const PLACE = { citadel: 'おしろ', crossing: 'ふみきり', classroom: 'きょうしつ', pool: 'プール', sky: 'そら' };
+const KEY = 'ph.memory';
+let welcomed = false; // once per page, not per character reload
 const SHY = ['ち、ちかいよ…', 'えっ…'];
 const pick = (a) => a[Math.floor(Math.random() * a.length)];
 const r = (a, b) => a + Math.random() * (b - a);
@@ -31,6 +38,37 @@ export class Life {
     this.mode = 'you'; this.left = r(2, 5); this.away = 0;
     this.present = null; this.absent = 0; this.seen = false; this.close = 0; this.shyCool = 0;
     this.chat = r(25, 50); this.cue = null;
+    this.memory = { visits: 0, lastSeen: 0, lastMap: null, maps: {} };
+    try { Object.assign(this.memory, JSON.parse(localStorage.getItem(KEY) ?? '{}')); } catch {}
+    this.awaySec = this.memory.lastSeen ? (Date.now() - this.memory.lastSeen) / 1000 : null;
+    if (!welcomed) this.memory.visits++;
+    this.save(); this.map = null; this.since = 0;
+  }
+
+  save() {
+    this.memory.lastSeen = Date.now();
+    try { localStorage.setItem(KEY, JSON.stringify(this.memory)); } catch {}
+  }
+
+  /** something happened in the map (MapContext.cue, world position): look, maybe a gesture or a word */
+  notice({ p, line, gesture, hold = 2.5 }) {
+    if (!this.P.on) return;
+    const c = this.c, b = c.behavior;
+    this.mode = 'thing'; this.target.copy(p); this.left = hold; this.away = 0; this.cue = null;
+    c.nextBlink = c.t;
+    if (b.speech) return;
+    if (gesture) c.director.play(gesture);
+    if (line && Math.random() < this.P.chatter * 1.4) this.say(line);
+  }
+
+  /** the map changed: a first time somewhere is worth a word, and so is having just been elsewhere */
+  mapChanged(id) {
+    const prev = this.map; this.map = id;
+    if (!id) return;
+    const first = !this.memory.maps[id];
+    this.memory.maps[id] = (this.memory.maps[id] ?? 0) + 1; this.memory.lastMap = id; this.save();
+    if (!prev || !this.P.on || Math.random() > Math.max(this.P.chatter, 0.5)) return;
+    this.pending = first ? 'わあ、ここ はじめて！' : PLACE[prev] ? `さっきまで ${PLACE[prev]}に いたね` : null;
   }
 
   /** viewer: the eye (world); present: webcam sees a face (null = no tracking); close: leaning in;
@@ -39,11 +77,16 @@ export class Life {
     const c = this.c, b = c.behavior, d = c.director, P = this.P;
     if (!P.on) { c.lookTarget = viewer; return; }
     const busy = b.state !== 'idle' || !!b.speech;
+    this.since += dt;
+    if ((this.saveIn = (this.saveIn ?? 30) - dt) <= 0) { this.saveIn = 30; this.save(); }
+    // the first greeting of the visit, once she's settled in; then a word about the place, if any
+    if (!welcomed && this.since > 2.5 && !busy) { welcomed = true; this.seen = true; this.greet(this.awaySec); }
+    else if (this.pending && this.since > 4 && !busy) { this.say(this.pending); this.pending = null; b.express('smile', { len: 2.2 }); }
 
     // presence: the moment you appear (after being away) she greets you; while you're gone she searches
     if (present !== null) {
       if (present) {
-        if (!this.seen || this.absent > 6) this.greet();
+        if (!this.seen || this.absent > 6) { const first = !welcomed; welcomed = true; this.greet(first ? this.awaySec : 0); }
         this.seen = true; this.absent = 0;
       } else this.absent += dt;
     }
@@ -88,12 +131,14 @@ export class Life {
     }
   }
 
-  greet() {
+  /** away: seconds since the last visit (null = never), picks the line; a return within a visit is plain GREET */
+  greet(away = 0) {
     const b = this.c.behavior, d = this.c.director;
     if (b.speech) return;
     d.play(pick(['hi', 'wave', 'wave2'])) || b.react('wave');
     b.express('happy', { len: 2.8 });
-    if (Math.random() < Math.max(this.P.chatter, 0.3)) this.say(pick(GREET));
+    const lines = away === null ? WELCOME[0][1] : WELCOME.slice(1).filter(([s]) => away >= s).at(-1)?.[1] ?? GREET;
+    if (away !== 0 || Math.random() < Math.max(this.P.chatter, 0.3)) this.say(pick(lines)); // the first hello of a visit is always said
     this.mode = 'you'; this.left = r(4, 7);
   }
 
