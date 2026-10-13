@@ -198,6 +198,9 @@ function shafts(g, bays) {
     vertexShader: 'attribute float aFade; varying float vF; varying vec3 vW; void main(){ vF = aFade; vW = position; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }',
     fragmentShader: `uniform vec3 uColor; uniform float uStrength; varying float vF; varying vec3 vW;
       void main(){ float a = (1.0 - vF) * (1.0 - vF) * (0.75 + 0.25 * sin(vW.y * 9.0 + vW.z * 3.0)); gl_FragColor = vec4(uColor * a * uStrength, 1.0);
+      #ifdef TONE_MAPPING
+      gl_FragColor.rgb *= 0.35; // VR draws straight to the headset: this light lands on an image already tone mapped, uncompressed
+      #endif
       #include <tonemapping_fragment>
       #include <colorspace_fragment>
       }`,
@@ -217,8 +220,11 @@ function shafts(g, bays) {
     vertexShader: `attribute float aSeed; uniform float uTime, uScale; varying float vA;
       void main(){ vec3 p = position + vec3(sin(uTime * 0.13 + aSeed), sin(uTime * 0.09 + aSeed * 1.7) * 0.6, cos(uTime * 0.11 + aSeed * 0.7)) * 0.12;
         vec4 mv = modelViewMatrix * vec4(p, 1.0); gl_Position = projectionMatrix * mv;
-        vA = 0.35 + 0.65 * (0.5 + 0.5 * sin(uTime * 1.3 + aSeed * 5.0)); gl_PointSize = uScale * 9.0 / -mv.z; }`,
+        vA = 0.35 + 0.65 * (0.5 + 0.5 * sin(uTime * 1.3 + aSeed * 5.0)); gl_PointSize = uScale * 9.0 / distance(cameraPosition, (modelMatrix * vec4(p, 1.0)).xyz); }`, // world distance: in VR the view space is metres, not world units
     fragmentShader: `varying float vA; void main(){ float d = length(gl_PointCoord - 0.5); if (d > 0.5) discard; gl_FragColor = vec4(vec3(1.0, 0.8, 0.55) * vA * (1.0 - d * 2.0) * 0.5, 1.0);
+#ifdef TONE_MAPPING
+gl_FragColor.rgb *= 0.35;
+#endif
 #include <tonemapping_fragment>
 #include <colorspace_fragment>
 }`,

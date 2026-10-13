@@ -202,15 +202,26 @@ export function createEngine({ canvas, far = 30000, maxPixelRatio = 2 } = {}) {
         emit('beforeFrame', dt, t);
         wind.tick(dt, t);
         inst?.tick?.(t, { dt, camera });
-        gi.tick(inst?.emitters ?? []);
+        gi.tick(inst?.emitters ?? [], renderer.xr.isPresenting ? 1 / U : 1);
         // the post chain renders into its own targets, which WebXR can't present: in VR draw straight to the headset
         // (tone mapping and the subject's ink lines still apply; AO, bloom and the grade are skipped)
-        if (renderer.xr.isPresenting) { renderer.shadowMap.needsUpdate = true; outline.render(scene, camera); } else post.render();
+        if (renderer.xr.isPresenting) xrRender(); else post.render();
         emit('afterFrame', dt, t);
       });
     },
   };
 
+  // In VR the rig's scale makes view space metres, and three does point/spot falloff and fog in view space:
+  // they'd come out U^decay times too bright and U times too thin. Rescale them for the headset's draw only.
+  const xrRender = () => {
+    const undo = [], fog = scene.fog;
+    scene.traverse((o) => { if (o.isPointLight || o.isSpotLight) { undo.push([o, o.intensity, o.distance]); o.intensity /= U ** o.decay; o.distance /= U; } });
+    if (fog?.isFog) { fog.near /= U; fog.far /= U; } else if (fog?.isFogExp2) fog.density *= U;
+    renderer.shadowMap.needsUpdate = true;
+    outline.render(scene, camera);
+    for (const [o, i, d] of undo) { o.intensity = i; o.distance = d; }
+    if (fog?.isFog) { fog.near *= U; fog.far *= U; } else if (fog?.isFogExp2) fog.density /= U;
+  };
   // entering VR: stand the viewer xr.distance metres in front of the subject, room scaled to the map
   const xrP = { distance: 1.2 };
   const placeRig = () => { if (!renderer.xr.isPresenting) return; rig.position.copy(toWorld([0, 0, xrP.distance])); rig.scale.setScalar(U); };

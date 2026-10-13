@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { PointerLockControls } from 'three/addons/controls/PointerLockControls.js';
 import { VRButton } from 'three/addons/webxr/VRButton.js';
+import { XRControllerModelFactory } from 'three/addons/webxr/XRControllerModelFactory.js';
 import { createEngine, connectBridge } from '../engine/index.js';
 import { FaceTracker } from './tracking/FaceTracker.js';
 import { OffAxisCamera } from './spatial/OffAxisCamera.js';
@@ -13,6 +14,7 @@ import { allMaps } from './maps/index.js';
 import { mountParamsPanel } from './ui/ParamsPanel.js';
 import { Character, BUILTIN_MOTIONS, IDLE_POSE, DEFAULT_MODEL } from './character/Character.js';
 import { Life } from './character/Life.js';
+import { Touch } from './character/Touch.js';
 
 const $=s=>document.querySelector(s),canvas=$('#scene'),video=$('#camera'),status=$('#status'),debugPanel=$('#debugPanel'),calPanel=$('#calibration'),motionSel=$('#motion'),modelSel=$('#modelSel');
 const calibration=new Calibration();
@@ -91,6 +93,7 @@ async function loadCharacter(url,manager){
   const c=new Character();const mesh=await c.load(url,manager);
   clearModels();character=c;window.character=c; // console / future LLM hook
   c.life=new Life(c,{say:t=>window.chat?.say(t),P:lifeP});
+  c.touch=new Touch(c,{say:t=>window.chat?.say(t),P:lifeP});
   const h=new THREE.Box3().setFromObject(mesh).getSize(new THREE.Vector3()).y;
   charHeight=h;
   stage.add(mesh);blob.scale.set(h*.45,h*.3,1);blob.visible=true;layout();
@@ -207,6 +210,10 @@ const MODELS=[
 
 // per frame, before the engine ticks the map and renders: camera rig + character
 const viewer=new THREE.Vector3(),herHead=new THREE.Vector3();
+// VR hands: the Touch controllers (their own models), in the rig so they scale with it; Touch.js reads them
+const controllerModels=new XRControllerModelFactory();
+const grips=[0,1].map(i=>{const g=renderer.xr.getControllerGrip(i);g.add(controllerModels.createControllerModel(g));
+  g.addEventListener('connected',e=>{g.userData.src=e.data});g.addEventListener('disconnected',()=>{g.userData.src=null});engine.rig.add(g);return g});
 engine.on('beforeFrame',dt=>{
   // Head motion: critically damped spring (kills tracker jitter) + parallax strength around the rest pose.
   // A physically exact window (parallax 1) swings the far background as much as the head moves.
@@ -222,6 +229,7 @@ engine.on('beforeFrame',dt=>{
     const close=xr?viewer.distanceTo(character.bones['頭'].getWorldPosition(herHead))<.45*engine.units:present&&ve.z<restEye.z*.62;
     character.life.update(dt,{viewer,present,close,map:engine.map,night:(inst?.sky?.values.elev??30)<-6,
       interests:(inst?.interests?.()??[]).map(i=>({p:engine.toWorld(i.p),label:i.label}))});
+    character.touch.update(dt,{hands:xr?grips.filter(g=>g.userData.src).map(g=>({p:g.getWorldPosition(new THREE.Vector3()),src:g.userData.src})):[],viewer,U:engine.units});
     character.update(dt);const c=character.bones['センター'].getWorldPosition(blob.position);stage.worldToLocal(c);c.y=.01}
   debugPanel.textContent=`filtered eye (m)
 x ${eye.x.toFixed(3)}

@@ -90,7 +90,8 @@ export function createGI(renderer) {
       mat.customProgramCacheKey = () => 'gi';
       mat.needsUpdate = true;
     },
-    tick(emitters) {
+    /** k: scale on the emitters' ranges (1/U in VR, where view space is metres) */
+    tick(emitters, k = 1) {
       for (let i = 0; i < MAX_EM; i++) {
         const e = emitters[i], col = emCol.value[i];
         let on = !!e;
@@ -98,7 +99,7 @@ export function createGI(renderer) {
         if (!on) { col.set(0, 0, 0); continue; }
         e.obj.getWorldPosition(emPos.value[i]);
         if (e.facing) e.obj.getWorldDirection(emNrm.value[i]); else emNrm.value[i].set(0, 0, 0);
-        emRange.value[i] = e.range * e.obj.getWorldScale(tmpV).x;
+        emRange.value[i] = e.range * e.obj.getWorldScale(tmpV).x * k;
         col.set(e.color.r, e.color.g, e.color.b).multiplyScalar(e.power() * emGain.value);
       }
     },

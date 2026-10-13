@@ -48,6 +48,7 @@ export class Character {
     this.offsets = new Map(); // bone -> quaternion applied last frame (undone before the mixer runs)
     this.moves = new Map();   // bone -> [x,y,z] position offset applied last frame
     this.idleAmt = 1;
+    this.lean = { pitch: 0, roll: 0 }; // extra head tilt (rad) on top of the look, e.g. into a patting hand (Touch.js)
     this.inertialBlend = true; // false = old linear crossfade (A/B toggle in the chat bar)
   }
 
@@ -245,6 +246,7 @@ export class Character {
       const c = THREE.MathUtils.clamp;
       this.rotate('両目', c(pitch - hp, -0.25, 0.25) * this.eyeGain, c(yaw - hy, -0.4, 0.4) * this.eyeGain, 0);
     }
+    if (this.lean.pitch || this.lean.roll) { this.rotate('首', this.lean.pitch * 0.4, 0, this.lean.roll * 0.4); this.rotate('頭', this.lean.pitch * 0.6, 0, this.lean.roll * 0.6); }
     this.behavior.apply(dt);
   }
 
