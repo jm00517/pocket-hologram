@@ -42,30 +42,39 @@ const COMMON = /* glsl */`
     if (h <= 0.0 || h >= 1.0) return 0.0;
     vec3 q = p - vec3(uWindOff.x, 0.0, uWindOff.y); // detail rides the mean wind
     float cov = texture2D(tFluid, p.xz / uFluidS + 0.5).r;
-    if (uHole.z > 0.0) cov *= smoothstep(uHole.z * 0.45, uHole.z, length(p.xz - uHole.xy) + (texture(tNoise, p / 1800.0).r - 0.5) * uHole.z * 0.5);
+    // the hole: its noise moves the edge by at most R/4, so beyond 1.25 R the factor is exactly 1 (no texture read)
+    float hd = length(p.xz - uHole.xy);
+    if (uHole.z > 0.0 && hd < uHole.z * 1.25) cov *= smoothstep(uHole.z * 0.45, uHole.z, hd + (texture(tNoise, p / 1800.0).r - 0.5) * uHole.z * 0.5);
     if (uSunGap > 0.0) {
-      // Art direction around the sun line (eye -> sun): a lumpy cloud where it enters the deck hides the sun;
-      // behind it the line is kept clear, so the sun lights the cloud's back and its thin rim glows. Gaps open in
-      // a fan below the sun; their beams run parallel to the sun line -> rays converging on the sun.
-      // the whole set piece drifts with the wind (uGapOff) and forms/dissolves on a cycle, like a real cloud
-      // crossing the sun: covered (rays, silver rim, the viewer in its shadow), then it moves on and the sun is out
       vec3 pg = p - uGapOff;
-      float along = dot(pg, uSun); vec3 w = pg - uSun * along; float r = length(w);
-      vec3 down = normalize(uSun * uSun.y - vec3(0.0, 1.0, 0.0)), side = cross(uSun, down);
-      float ang = atan(dot(w, side), dot(w, down));
-      float tEnt = uBase / max(uSun.y, 0.05), n3 = texture(tNoise, q / 1300.0).r;
-      float fan = 1.0 - smoothstep(uFan * 0.6, uFan, abs(ang));
-      // a thin broken clear margin all round lights the rim; below the sun, in the fan, coverage drops so the
-      // cloud's own shape noise opens a few organic gaps (cutting slots there left backlit shards that glittered)
-      float clearR = uBankR * (0.95 + 0.35 * smoothstep(0.35, 0.75, n3));
-      float tube = 1.0 - smoothstep(clearR * 0.9, clearR, r + (n3 - 0.5) * uBankR * 1.3);
-      float ring = smoothstep(uBankR * 0.8, uBankR * 1.2, r) * (1.0 - smoothstep(uBankR + uGapW * 0.5, uBankR + uGapW, r));
-      float behind = smoothstep(tEnt - 400.0, tEnt + 200.0, along);
-      float c2 = cov * (1.0 - tube * behind) * (1.0 - uGapCut * fan * ring * behind);
-      if (lightPath) c2 *= 1.0 - fan * ring * behind * smoothstep(0.45, 0.55, texture(tNoise, vec3(ang * 2.2, r / 2600.0, 0.11 + uTime * 0.0003)).g);
-      float bd = length(pg - uSun * (tEnt + uBankR * 0.7)) / uBankR + (texture(tNoise, q / 650.0).r - 0.5) * 0.8 + (n3 - 0.5) * 0.6;
-      c2 = max(c2, 0.97 * (1.0 - smoothstep(0.55, 1.0, bd)));
-      cov = mix(cov, c2, uSunGap);
+      float along = dot(pg, uSun), tEnt = uBase / max(uSun.y, 0.05); vec3 w = pg - uSun * along; float r = length(w);
+      // Outside these bounds every term below is exactly zero (tube needs r < 1.95 R, the ring r < R + gapW, both only
+      // past along > tEnt - 400; the bank needs |pg - centre| < 1.7 R, noise included), so skipping is free: the sky
+      // pass and the shadow map were spending most of their time here, on samples nowhere near the sun line.
+      bool nearLine = along > tEnt - 400.0 && (r < 1.95 * uBankR || r < uBankR + uGapW);
+      bool nearBank = length(pg - uSun * (tEnt + uBankR * 0.7)) < 1.7 * uBankR;
+      if (nearLine || nearBank) {
+        // Art direction around the sun line (eye -> sun): a lumpy cloud where it enters the deck hides the sun;
+        // behind it the line is kept clear, so the sun lights the cloud's back and its thin rim glows. Gaps open in
+        // a fan below the sun; their beams run parallel to the sun line -> rays converging on the sun.
+        // the whole set piece drifts with the wind (uGapOff) and forms/dissolves on a cycle, like a real cloud
+        // crossing the sun: covered (rays, silver rim, the viewer in its shadow), then it moves on and the sun is out
+        vec3 down = normalize(uSun * uSun.y - vec3(0.0, 1.0, 0.0)), side = cross(uSun, down);
+        float ang = atan(dot(w, side), dot(w, down));
+        float n3 = texture(tNoise, q / 1300.0).r;
+        float fan = 1.0 - smoothstep(uFan * 0.6, uFan, abs(ang));
+        // a thin broken clear margin all round lights the rim; below the sun, in the fan, coverage drops so the
+        // cloud's own shape noise opens a few organic gaps (cutting slots there left backlit shards that glittered)
+        float clearR = uBankR * (0.95 + 0.35 * smoothstep(0.35, 0.75, n3));
+        float tube = 1.0 - smoothstep(clearR * 0.9, clearR, r + (n3 - 0.5) * uBankR * 1.3);
+        float ring = smoothstep(uBankR * 0.8, uBankR * 1.2, r) * (1.0 - smoothstep(uBankR + uGapW * 0.5, uBankR + uGapW, r));
+        float behind = smoothstep(tEnt - 400.0, tEnt + 200.0, along);
+        float c2 = cov * (1.0 - tube * behind) * (1.0 - uGapCut * fan * ring * behind);
+        if (lightPath) c2 *= 1.0 - fan * ring * behind * smoothstep(0.45, 0.55, texture(tNoise, vec3(ang * 2.2, r / 2600.0, 0.11 + uTime * 0.0003)).g);
+        float bd = length(pg - uSun * (tEnt + uBankR * 0.7)) / uBankR + (texture(tNoise, q / 650.0).r - 0.5) * 0.8 + (n3 - 0.5) * 0.6;
+        c2 = max(c2, 0.97 * (1.0 - smoothstep(0.55, 1.0, bd)));
+        cov = mix(cov, c2, uSunGap);
+      }
     }
     float prof = smoothstep(0.0, 0.2, h) * smoothstep(1.0, 0.45, h);
     float shape = texture(tNoise, vec3(q.x / 3400.0, q.z / 3400.0, q.y / 2600.0)).r * prof;

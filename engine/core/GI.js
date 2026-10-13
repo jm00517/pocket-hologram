@@ -21,7 +21,7 @@ export function createGI(renderer) {
   const emPos = { value: Array.from({ length: MAX_EM }, () => new THREE.Vector3()) };
   const emCol = { value: Array.from({ length: MAX_EM }, () => new THREE.Vector3()) };
   const emNrm = { value: Array.from({ length: MAX_EM }, () => new THREE.Vector3()) }; // zero = omni
-  const emRange = { value: new Float32Array(MAX_EM).fill(1) }, emGain = { value: 1.2 }, rim = { value: 1 };
+  const emRange = { value: new Float32Array(MAX_EM).fill(1) }, emGain = { value: 1.2 }, rim = { value: 1 }, emN = { value: 0 };
   // same shape the weather code already drives on a DirectionalLight (color, intensity, position)
   const key = { color: new THREE.Color('#ffffff'), intensity: 2.5, position: new THREE.Vector3(-1, 1, 1) };
   const tmpC = new THREE.Color(), tmpV = new THREE.Vector3();
@@ -32,7 +32,7 @@ export function createGI(renderer) {
     key, strength, emGain, rim,
     patch(mat) {
       mat.onBeforeCompile = (s) => {
-        Object.assign(s.uniforms, { uGI: sh, uGIStrength: strength, uKeyColor: keyColor, uKeyDir: keyDir, uEmPos: emPos, uEmCol: emCol, uEmNrm: emNrm, uEmRange: emRange, uRim: rim });
+        Object.assign(s.uniforms, { uGI: sh, uGIStrength: strength, uKeyColor: keyColor, uKeyDir: keyDir, uEmPos: emPos, uEmCol: emCol, uEmNrm: emNrm, uEmRange: emRange, uRim: rim, uEmN: emN });
         s.fragmentShader = s.fragmentShader
           .replace('#include <common>', `#include <common>
             uniform vec3 uGI[ 9 ];
@@ -43,7 +43,8 @@ export function createGI(renderer) {
             uniform vec3 uEmCol[ ${MAX_EM} ];
             uniform vec3 uEmNrm[ ${MAX_EM} ];
             uniform float uEmRange[ ${MAX_EM} ];
-            uniform float uRim;`)
+            uniform float uRim;
+            uniform int uEmN;`)
           .replace('#include <lights_fragment_maps>', `#include <lights_fragment_maps>
             // tint only: the probe's brightness gradient on a toon face reads as muddy smudges, so keep its hue
             vec3 giIrr = max( getLightProbeIrradiance( uGI, geometryNormal ), vec3( 0.0 ) );
@@ -52,6 +53,7 @@ export function createGI(renderer) {
             irradiance *= mix( vec3( 1.0 ), giTint, uGIStrength );
             vec3 emIrr = vec3( 0.0 ), emRim = vec3( 0.0 );
             for ( int i = 0; i < ${MAX_EM}; i ++ ) {
+              if ( i >= uEmN ) break; // only the map's emitters: most maps have none, and she can fill a VR view
               vec3 toEm = ( viewMatrix * vec4( uEmPos[ i ], 1.0 ) ).xyz - geometryPosition;
               // near-inverse-square inside the range: the nearest light owns her colour instead of every lamp in
               // range adding up at full strength
@@ -92,6 +94,7 @@ export function createGI(renderer) {
     },
     /** k: scale on the emitters' ranges (1/U in VR, where view space is metres) */
     tick(emitters, k = 1) {
+      emN.value = Math.min(emitters.length, MAX_EM);
       for (let i = 0; i < MAX_EM; i++) {
         const e = emitters[i], col = emCol.value[i];
         let on = !!e;
