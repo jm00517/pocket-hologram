@@ -174,6 +174,11 @@ export interface MapInstance {
   /** clickable ground + how to walk the subject there (map-local metres) */
   walkable?: THREE.Object3D[];
   moveTo?(p: THREE.Vector3): void;
+  /** surfaces a click pokes (the app raycasts them) + what a poke does there (map-local metres) */
+  pokeable?: THREE.Object3D[];
+  poke?(p: THREE.Vector3): void;
+  /** every frame while active: the VR hands in map-local metres with their speed (m/s); [] outside VR */
+  touch?(hands: { p: THREE.Vector3; v: THREE.Vector3 }[], dt: number): void;
   /** things in the map worth a look (stage metres): the app's character glances at them */
   interests?(): { p: Vec3; label: string }[];
 }

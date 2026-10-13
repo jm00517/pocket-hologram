@@ -130,12 +130,14 @@ const crosshair=Object.assign(document.createElement('div'),{style:'position:fix
 document.body.append(crosshair);
 freeCam.controls.addEventListener('lock',()=>crosshair.style.display='block');
 freeCam.controls.addEventListener('unlock',()=>crosshair.style.display='none');
-canvas.addEventListener('click',()=>{
-  if(!freeCam.on)return;
+// Outside free cam (or at the crosshair inside it) a click on a map's pokeable surface pokes it (the pool's water rings).
+canvas.addEventListener('click',e=>{
+  const m=engine.mapInstance,poke=()=>{const hit=m?.poke&&ray.intersectObjects(m.pokeable??[],false)[0];if(hit)m.poke(m.group.worldToLocal(hit.point.clone()));return hit};
+  if(!freeCam.on){const r=canvas.getBoundingClientRect();ray.setFromCamera(new THREE.Vector2((e.clientX-r.left)/r.width*2-1,1-(e.clientY-r.top)/r.height*2),camera);poke();return}
   if(!freeCam.controls.isLocked){freeCam.controls.lock();return} // mouse-look works with or without a character
-  if(!character)return;
   ray.setFromCamera(new THREE.Vector2(0,0),camera);
-  const m=engine.mapInstance,hit=m?.moveTo&&ray.intersectObjects(m.walkable??[],false)[0];
+  if(poke()||!character)return;
+  const hit=m?.moveTo&&ray.intersectObjects(m.walkable??[],false)[0];
   if(hit)m.moveTo(m.group.worldToLocal(hit.point.clone()));
 });
 addEventListener('keydown',e=>{if(e.target.closest?.('input,textarea,select'))return;if(e.code==='KeyF')toggleFree();freeCam.keys.add(e.code);if(freeCam.on&&/^(Key[WASDC]|Space)$/.test(e.code))e.preventDefault()}); // Space would click the last-focused button
@@ -223,6 +225,7 @@ const viewer=new THREE.Vector3(),herHead=new THREE.Vector3();
 const controllerModels=new XRControllerModelFactory();
 const grips=[0,1].map(i=>{const g=renderer.xr.getControllerGrip(i);g.add(controllerModels.createControllerModel(g));
   g.addEventListener('connected',e=>{g.userData.src=e.data});g.addEventListener('disconnected',()=>{g.userData.src=null});engine.rig.add(g);return g});
+const mapHands=[];
 engine.on('beforeFrame',dt=>{
   // Head motion: critically damped spring (kills tracker jitter) + parallax strength around the rest pose.
   // A physically exact window (parallax 1) swings the far background as much as the head moves.
@@ -231,6 +234,9 @@ engine.on('beforeFrame',dt=>{
   const ve={x:rest.x+(viewEye.x-rest.x)*P,y:rest.y+(viewEye.y-rest.y)*P,z:rest.z+(viewEye.z-rest.z)*P};
   // in VR the headset is the camera; the window rig (tracking, off-axis) stands down
   if(engine.xr){}else if(engine.cameraMode==='rig'){if(freeCam.on)flyFreeCam(dt);else{const vp=viewport();spatial.update({x:(ve.x-vp.ox)*K,y:(ve.y-vp.oy)*K,z:ve.z*K})}}
+  // VR hands in the map (the pool's water): map metres and speed in m/s
+  const mi=engine.mapInstance;
+  if(mi?.touch){const hs=engine.xr?grips.filter(g=>g.userData.src):[];mi.touch(hs.map((g,i)=>{const p=mi.group.worldToLocal(g.getWorldPosition(new THREE.Vector3())),q=mapHands[i]??p;mapHands[i]=p;return{p,v:p.clone().sub(q).divideScalar(Math.max(dt,1e-3))}}),dt);mapHands.length=hs.length}
   if(character){
     // VR: the headset off your face (session hidden) counts as away, so putting it back on is a return
     const inst=engine.mapInstance,xr=engine.xr,present=xr?renderer.xr.getSession()?.visibilityState!=='hidden':lastFace===null?null:performance.now()-lastFace<1500;

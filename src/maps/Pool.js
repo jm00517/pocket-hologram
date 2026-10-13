@@ -1,11 +1,14 @@
 // School pool (学校のプール) on a midsummer afternoon. A 25 m, 6-lane outdoor pool seen from the start end:
 // the water is a planar mirror with ripple normals, refraction-depth absorption and a sun glint; the basin
 // gets moving caustics only where the sun actually reaches and a refraction wobble on its lane lines.
+// The surface is also a wave-equation heightfield on the GPU (ripples): VR hands dragged through it and
+// clicks on it leave rings that spread, bounce off the walls and die out.
 // Lane ropes bob, backstroke flags flutter, a pace clock sweeps. Chain-link fence, the school building on
 // the right, changing rooms and a tent on the left, cicada-summer trees beyond.
 // Same conventions as Crossing/Classroom: metres inside `group`, fit(scene, U) scales it.
 import * as THREE from 'three';
 import { Reflector } from 'three/addons/objects/Reflector.js';
+import { FullScreenQuad } from 'three/addons/postprocessing/Pass.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { loadSky, WIND_GLSL } from '../../engine/index.js';
 import { trees, useWind } from './crossing/Foliage.js';
@@ -36,6 +39,7 @@ function addMerged(g, mat, geos, { cast = true, recv = true } = {}) {
   m.castShadow = cast; m.receiveShadow = recv; g.add(m); return m;
 }
 const time = { value: 0 };
+const ripTex = { value: null }; // the ripple heightfield (ripples()), read by the water and the basin under it
 let windU = null; // engine wind uniforms (flags, trees)
 
 // --- the basin: painted tiles, lane lines, caustics ----------------------------------------------------
@@ -59,20 +63,24 @@ const CAUSTICS = /* glsl */`
 function basinMat(map, wobble) {
   const mat = new THREE.MeshStandardMaterial({ map, roughness: 0.35 });
   mat.onBeforeCompile = (sh) => {
-    sh.uniforms.uTime = time;
+    sh.uniforms.uTime = time; sh.uniforms.tRip = ripTex;
     sh.vertexShader = sh.vertexShader.replace('#include <common>', '#include <common>\nvarying vec3 vPos;')
       .replace('#include <begin_vertex>', '#include <begin_vertex>\nvPos = position;');
-    sh.fragmentShader = sh.fragmentShader.replace('#include <common>', `#include <common>\nuniform float uTime;\nvarying vec3 vPos;\n${CAUSTICS}`)
+    sh.fragmentShader = sh.fragmentShader.replace('#include <common>', `#include <common>\nuniform float uTime; uniform sampler2D tRip;\nvarying vec3 vPos;\n${CAUSTICS}\n${RIP_GLSL}`)
       // seen through moving water the lines waver: wobble the paint lookup (refraction, faked where it's visible)
       .replace('#include <map_fragment>', `
         float under = smoothstep(${(WY - 0.02).toFixed(3)}, ${(WY - 0.2).toFixed(3)}, vPos.y);
         vec2 wob = vec2(sin(vPos.z * 2.3 + uTime * 1.7) + sin(vPos.x * 3.1 - uTime * 1.3), cos(vPos.x * 2.7 + uTime * 1.5) + sin(vPos.z * 3.7 + uTime * 1.1));
-        vec4 sampledDiffuseColor = texture2D(map, vMapUv + wob * ${wobble.toFixed(4)} * under);
+        // your ripples above: the paint shifts by slope x depth x ~1/4 (refraction; in floor uv, close enough on the walls)
+        vec2 rUv = ripUv(vPos.xz), rSl = ripSlope(rUv);
+        vec4 sampledDiffuseColor = texture2D(map, vMapUv + wob * ${wobble.toFixed(4)} * under + rSl * vec2(${(0.25 / (PX * 2)).toFixed(5)}, ${(-0.25 / (PZ0 - PZ1)).toFixed(5)}) * (${WY.toFixed(3)} - vPos.y) * under);
         diffuseColor *= sampledDiffuseColor;`)
       // caustics ride on the direct sun term, so the wall's shadow strip stays caustic-free
       .replace('#include <lights_fragment_end>', `#include <lights_fragment_end>
         vec2 cp = (vPos.xz + vec2(vPos.y * 0.6)) * 1.9;
-        reflectedLight.directDiffuse *= mix(1.0, 0.55 + 2.4 * caustic(cp, uTime * 0.8), under);
+        // and focus light: a crest (negative curvature) gathers sunlight into a bright ring on the floor below
+        float focus = clamp(1.0 - ripLap(rUv) * (${WY.toFixed(3)} - vPos.y), 0.3, 3.0);
+        reflectedLight.directDiffuse *= mix(1.0, (0.55 + 2.4 * caustic(cp, uTime * 0.8)) * focus, under);
         reflectedLight.indirectDiffuse *= mix(1.0, 0.8, under);`);
   };
   mat.customProgramCacheKey = () => `basin${wobble}`;
@@ -123,6 +131,68 @@ function basin(g) {
   addMerged(g, basinMat(wallTex(), 0.012), walls, { cast: false });
 }
 
+// --- ripples: h(t+dt) = 2h - h(t-dt) + (c dt/dx)^2 lap(h), damped; r = h, g = previous h (metres) ------------
+// Clamped edges mirror the field, so rings bounce off the basin walls. Sim texel (u, v) is the water plane's uv.
+const RDX = 0.05, RN = [Math.round(PX * 2 / RDX), Math.round((PZ0 - PZ1) / RDX)], RDT = 1 / 120;
+const RIP_GLSL = /* glsl */`
+  vec2 ripUv(vec2 xz) { return vec2((xz.x + ${PX.toFixed(3)}) / ${(PX * 2).toFixed(3)}, (${PZ0.toFixed(3)} - xz.y) / ${(PZ0 - PZ1).toFixed(3)}); }
+  float ripH(vec2 uv) { return texture2D(tRip, uv).r; }
+  // world-axis slope (dh/dx, dh/dz); uv v runs toward the far end (-z)
+  vec2 ripSlope(vec2 uv) { vec2 e = vec2(${(1 / RN[0]).toFixed(6)}, ${(1 / RN[1]).toFixed(6)});
+    return vec2(ripH(uv + vec2(e.x, 0.0)) - ripH(uv - vec2(e.x, 0.0)), ripH(uv - vec2(0.0, e.y)) - ripH(uv + vec2(0.0, e.y))) / ${(2 * RDX).toFixed(3)}; }
+  float ripLap(vec2 uv) { vec2 e = 2.0 * vec2(${(1 / RN[0]).toFixed(6)}, ${(1 / RN[1]).toFixed(6)}); // 2-texel stencil: smoother
+    return (ripH(uv + vec2(e.x, 0.0)) + ripH(uv - vec2(e.x, 0.0)) + ripH(uv + vec2(0.0, e.y)) + ripH(uv - vec2(0.0, e.y)) - 4.0 * ripH(uv)) / ${((2 * RDX) ** 2).toFixed(4)}; }`;
+function ripples(renderer) {
+  const rt = () => new THREE.WebGLRenderTarget(RN[0], RN[1], { type: THREE.HalfFloatType, format: THREE.RGBAFormat, depthBuffer: false, minFilter: THREE.LinearFilter, magFilter: THREE.LinearFilter });
+  let a = rt(), b = rt();
+  const MAXP = 4, U = {
+    tH: { value: null }, uTexel: { value: new THREE.Vector2(1 / RN[0], 1 / RN[1]) }, uK: { value: 0 }, uDamp: { value: 0 },
+    uP: { value: Array.from({ length: MAXP }, () => new THREE.Vector4()) }, // uv, radius (uv x), depth (m) pushed this step
+  };
+  const quad = new FullScreenQuad(new THREE.ShaderMaterial({
+    uniforms: U, depthTest: false, depthWrite: false,
+    vertexShader: 'varying vec2 vUv; void main() { vUv = uv; gl_Position = vec4(position.xy, 0.0, 1.0); }',
+    fragmentShader: /* glsl */`
+      uniform sampler2D tH; uniform vec2 uTexel; uniform float uK, uDamp; uniform vec4 uP[${MAXP}]; varying vec2 vUv;
+      void main() {
+        vec2 c = texture2D(tH, vUv).rg;
+        float lap = texture2D(tH, vUv + vec2(uTexel.x, 0.0)).r + texture2D(tH, vUv - vec2(uTexel.x, 0.0)).r
+                  + texture2D(tH, vUv + vec2(0.0, uTexel.y)).r + texture2D(tH, vUv - vec2(0.0, uTexel.y)).r - 4.0 * c.r;
+        float h = (2.0 * c.r - c.g + uK * lap) * uDamp;
+        for (int i = 0; i < ${MAXP}; i++) {
+          vec2 d = (vUv - uP[i].xy) * vec2(1.0, uTexel.x / uTexel.y); // square in metres
+          h -= uP[i].w * exp(-dot(d, d) / max(uP[i].z * uP[i].z, 1e-9));
+        }
+        gl_FragColor = vec4(h, c.r, 0.0, 1.0);
+      }`,
+  }));
+  const pts = [], P = { speed: 0.8, fade: 2.5 };
+  let acc = 0, idle = Infinity;
+  const clear = () => { for (const t of [a, b]) { renderer.setRenderTarget(t); renderer.clear(); } };
+  return {
+    P, get texture() { return a.texture; },
+    /** push the surface down at (x, z) map metres: depth m, radius m. Applied on the next step. */
+    push(x, z, depth, radius) {
+      if (pts.length < MAXP) pts.push(new THREE.Vector4((x + PX) / (PX * 2), (PZ0 - z) / (PZ0 - PZ1), radius / (PX * 2), depth));
+    },
+    step(dt) {
+      if (pts.length) idle = 0; else idle += dt;
+      if (idle > 30) { acc = 0; return; } // still water: rings are long gone (fade << 30 s)
+      const prev = renderer.getRenderTarget(), xrOn = renderer.xr.enabled, cc = renderer.getClearColor(new THREE.Color()), ca = renderer.getClearAlpha();
+      renderer.xr.enabled = false; // offscreen: keep three from swapping in the eye cameras (see VolumetricSky)
+      if (idle === 0 && !this.live) { renderer.setClearColor(0, 0); clear(); this.live = true; }
+      U.uK.value = (P.speed * RDT / RDX) ** 2; U.uDamp.value = Math.pow(0.5, RDT / P.fade);
+      for (acc = Math.min(acc + dt, RDT * 4); acc >= RDT; acc -= RDT) {
+        U.uP.value.forEach((v, i) => v.copy(pts[i] ?? v.set(0, 0, 0, 0)));
+        pts.length = 0;
+        U.tH.value = a.texture; renderer.setRenderTarget(b); quad.render(renderer); [a, b] = [b, a];
+      }
+      if (idle > 29 && this.live) { renderer.setClearColor(0, 0); clear(); this.live = false; } // leave it flat for the shader
+      renderer.setClearColor(cc, ca); renderer.setRenderTarget(prev); renderer.xr.enabled = xrOn;
+    },
+  };
+}
+
 // --- the water ----------------------------------------------------------------------------------------
 function water(g) {
   const geo = new THREE.PlaneGeometry(PX * 2, PZ0 - PZ1);
@@ -133,13 +203,15 @@ function water(g) {
         color: { value: new THREE.Color(1, 1, 1) }, tDiffuse: { value: null }, textureMatrix: { value: null },
         uTime: { value: 0 }, uU: { value: 1 }, uSun: { value: SUN_DIR.clone() }, uSunCol: { value: new THREE.Color('#fff3df') },
         uShallow: { value: new THREE.Color('#22c3d8') }, uDeep: { value: new THREE.Color('#0a5f86') },
+        tRip: ripTex,
       },
       vertexShader: /* glsl */`
-        uniform mat4 textureMatrix; varying vec4 vUvR; varying vec3 vWorld;
-        void main() { vUvR = textureMatrix * vec4(position, 1.0); vec4 w = modelMatrix * vec4(position, 1.0); vWorld = w.xyz; gl_Position = projectionMatrix * viewMatrix * w; }`,
+        uniform mat4 textureMatrix; varying vec4 vUvR; varying vec3 vWorld; varying vec2 vUv;
+        void main() { vUv = uv; vUvR = textureMatrix * vec4(position, 1.0); vec4 w = modelMatrix * vec4(position, 1.0); vWorld = w.xyz; gl_Position = projectionMatrix * viewMatrix * w; }`,
       fragmentShader: /* glsl */`
-        uniform sampler2D tDiffuse; uniform float uTime, uU; uniform vec3 uSun, uSunCol, uShallow, uDeep;
-        varying vec4 vUvR; varying vec3 vWorld;
+        uniform sampler2D tDiffuse, tRip; uniform float uTime, uU; uniform vec3 uSun, uSunCol, uShallow, uDeep;
+        varying vec4 vUvR; varying vec3 vWorld; varying vec2 vUv;
+        ${RIP_GLSL}
         void main() {
           vec2 p = vWorld.xz / uU; // metres
           // small wind ripples: a spread of short directional waves (deep-water speeds), analytic slope
@@ -150,15 +222,18 @@ function water(g) {
             float k = 6.2831 / lam, ph = dot(dir, p) * k + uTime * sqrt(9.8 * k) + fi * 1.7;
             d += dir * (0.028 * cos(ph));
           }
+          // the ripples you made
+          vec2 dr = ripSlope(vUv); d += dr;
           vec3 n = normalize(vec3(-d.x, 1.0, -d.y));
           vec3 V = normalize(cameraPosition - vWorld);
           float cosI = max(dot(n, V), 0.0);
           float F = 0.02 + 0.98 * pow(1.0 - cosI, 5.0);
-          vec3 refl = texture2D(tDiffuse, vUvR.xy / vUvR.w + n.xz * 0.03).rgb;
+          vec3 refl = texture2D(tDiffuse, vUvR.xy / vUvR.w + n.xz * 0.03 + dr * 0.08).rgb;
           // light path to the floor: refracted ray (n = 1.33) through the water column
           float sin2 = (1.0 - V.y * V.y) / 1.769, len = ${(WY - FY).toFixed(3)} / sqrt(1.0 - sin2);
           float ab = 1.0 - exp(-len * 0.42);
           vec3 body = mix(uShallow, uDeep, ab) * (0.35 + 0.65 * max(uSun.y, 0.0));
+          body *= clamp(1.0 - 4.0 * dot(dr, uSun.xz), 0.5, 1.8); // ripple faces turned to the sun light up
           vec3 H = normalize(uSun + V);
           vec3 spec = uSunCol * (pow(max(dot(n, H), 0.0), 900.0) * 40.0 + pow(max(dot(n, H), 0.0), 90.0) * 0.25);
           float a = F + (1.0 - F) * ab;
@@ -474,7 +549,9 @@ export function createPool(renderer, wind, ctx) {
   const steel = new THREE.MeshStandardMaterial({ color: '#e4e7ea', metalness: 1, roughness: 0.18 });
   const white = new THREE.MeshStandardMaterial({ color: '#f3f4f2', roughness: 0.5 });
   basin(g); deck(g); ropes(g); fence(g, steel); schoolBuilding(g); changingRooms(g); surroundings(g);
-  const sea = water(g);
+  const rip = ripples(renderer), sea = water(g);
+  ripTex.value = rip.texture;
+  let splashCool = 0;
   const metal = [...startingBlocks(g, steel), ...flags(g), ...ladder(-PX, -3, 1), ...ladder(PX, -23, -1), ...ladder(-PX, -23, 1)];
   const t = tent(g, -8.8, -13, steel), clock = paceClock(g, -3, FENCE_Z + 0.2);
   addMerged(g, steel, metal.concat(t.poles, clock.stand));
@@ -515,8 +592,26 @@ export function createPool(renderer, wind, ctx) {
       scene.backgroundRotation.set(0, a, 0); scene.environmentRotation.set(0, a, 0);
       scene.backgroundIntensity = 1; scene.environmentIntensity = 0.85;
     },
-    tick(t) {
+    params: [
+      { id: 'rippleSpeed', label: '물결 속도', doc: 'Speed of the rings you make in the water (m/s; real short ripples run ~0.2-1).', min: 0.2, max: 3, step: 0.05, get: () => rip.P.speed, set: (v) => { rip.P.speed = v; } },
+      { id: 'rippleFade', label: '물결 지속', doc: 'Half-life of the rings (s).', min: 0.3, max: 8, step: 0.1, get: () => rip.P.fade, set: (v) => { rip.P.fade = v; } },
+    ],
+    // a click on the water drops a stone's worth of ring
+    pokeable: [sea],
+    poke(p) { rip.push(p.x, p.z, 0.025, 0.07); },
+    /** hands: [{ p: map metres, v: m/s }] — a hand in the water pushes it aside in proportion to its speed */
+    touch(hands, dt) {
+      splashCool -= dt;
+      for (const { p, v } of hands) {
+        const depth = WY + 0.03 - p.y, sp = v.length();
+        if (depth < 0 || depth > 0.6 || Math.abs(p.x) > PX || p.z > PZ0 || p.z < PZ1 || sp < 0.03) continue;
+        rip.push(p.x, p.z, Math.min(sp, 3) * dt * 0.12, 0.06);
+        if (sp > 1.2 && splashCool <= 0 && ctx) { splashCool = 8; ctx.cue({ p: [p.x, WY, p.z], label: 'splash', line: '冷たそう〜', hold: 2 }); }
+      }
+    },
+    tick(t, { dt } = {}) {
       time.value = t; sea.material.uniforms.uTime.value = t;
+      rip.step(dt ?? 1 / 60); ripTex.value = rip.texture;
       clock.hand.rotation.z = -((t % 60) / 60) * Math.PI * 2;
     },
   };
