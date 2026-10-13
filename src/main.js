@@ -226,6 +226,20 @@ const controllerModels=new XRControllerModelFactory();
 const grips=[0,1].map(i=>{const g=renderer.xr.getControllerGrip(i);g.add(controllerModels.createControllerModel(g));
   g.addEventListener('connected',e=>{g.userData.src=e.data});g.addEventListener('disconnected',()=>{g.userData.src=null});engine.rig.add(g);return g});
 const mapHands=[];
+// VR locomotion on the sticks: left glides where you look (1.5 m/s), right snaps you 30° around your head.
+// It moves the rig, so walking through a map's doors (portals) works the same as stepping through in the room.
+const xrTurn={latch:false};
+function xrMove(dt){
+  const rig=engine.rig,U=engine.units;
+  for(const g of grips){const s=g.userData.src,ax=s?.gamepad?.axes;if(!ax||ax.length<4)continue;const x=ax[2],y=ax[3];
+    if(s.handedness==='left'&&Math.hypot(x,y)>.15){
+      const f=camera.getWorldDirection(new THREE.Vector3()).setY(0).normalize(),r=new THREE.Vector3(-f.z,0,f.x);
+      rig.position.addScaledVector(f,-y*1.5*U*dt).addScaledVector(r,x*1.5*U*dt)}
+    if(s.handedness==='right'){
+      if(Math.abs(x)>.7&&!xrTurn.latch){xrTurn.latch=true;const head=camera.getWorldPosition(new THREE.Vector3()),q=new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0,1,0),-Math.sign(x)*Math.PI/6);
+        rig.position.sub(head).applyQuaternion(q).add(head);rig.quaternion.premultiply(q)}
+      else if(Math.abs(x)<.3)xrTurn.latch=false}}
+}
 engine.on('beforeFrame',dt=>{
   // Head motion: critically damped spring (kills tracker jitter) + parallax strength around the rest pose.
   // A physically exact window (parallax 1) swings the far background as much as the head moves.
@@ -233,7 +247,7 @@ engine.on('beforeFrame',dt=>{
   dampSpring(viewEye,viewVel,eye,hl,dt);const rest=restEye;
   const ve={x:rest.x+(viewEye.x-rest.x)*P,y:rest.y+(viewEye.y-rest.y)*P,z:rest.z+(viewEye.z-rest.z)*P};
   // in VR the headset is the camera; the window rig (tracking, off-axis) stands down
-  if(engine.xr){}else if(engine.cameraMode==='rig'){if(freeCam.on)flyFreeCam(dt);else{const vp=viewport();spatial.update({x:(ve.x-vp.ox)*K,y:(ve.y-vp.oy)*K,z:ve.z*K})}}
+  if(engine.xr)xrMove(dt);else if(engine.cameraMode==='rig'){if(freeCam.on)flyFreeCam(dt);else{const vp=viewport();spatial.update({x:(ve.x-vp.ox)*K,y:(ve.y-vp.oy)*K,z:ve.z*K})}}
   // VR hands in the map (the pool's water): map metres and speed in m/s
   const mi=engine.mapInstance;
   if(mi?.touch){const hs=engine.xr?grips.filter(g=>g.userData.src):[];mi.touch(hs.map((g,i)=>{const p=mi.group.worldToLocal(g.getWorldPosition(new THREE.Vector3())),q=mapHands[i]??p;mapHands[i]=p;return{p,v:p.clone().sub(q).divideScalar(Math.max(dt,1e-3))}}),dt);mapHands.length=hs.length}
