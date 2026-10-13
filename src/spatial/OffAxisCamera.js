@@ -1,4 +1,3 @@
-import * as THREE from 'three';
 
 /**
  * Generalized perspective for a planar screen.

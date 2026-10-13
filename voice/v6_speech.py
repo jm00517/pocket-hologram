@@ -31,6 +31,7 @@ def _engine():
                                  stdout=subprocess.PIPE, text=True, encoding='utf-8', bufsize=1)
         ready = json.loads(_proc.stdout.readline() or '{}')
         if not ready.get('ready'):
+            _proc.kill()  # else every later request starts another engine holding a voice model
             _proc = None
             raise RuntimeError(f'VOCALOID6 engine did not start: {ready}')
     return _proc
@@ -62,11 +63,12 @@ def synth(text):
         r = json.loads(p.stdout.readline() or '{}')
         if not r.get('ok'):
             raise RuntimeError(r.get('error', 'render failed'))
-    # the engine pads the part with half a second of silence: cut it, so clauses played back to back don't gap
-    last = sc['notes'][-1]
-    with wave.open(str(OUT)) as w:
-        keep = int(((last['start'] + last['duration']) / TPS + 0.12) * w.getframerate())
-        params, frames = w.getparams(), w.readframes(keep)
+        # read inside the lock: every render writes the same file, and a parallel request would overwrite it
+        # the engine pads the part with half a second of silence: cut it, so clauses played back to back don't gap
+        last = sc['notes'][-1]
+        with wave.open(str(OUT)) as w:
+            keep = int(((last['start'] + last['duration']) / TPS + 0.12) * w.getframerate())
+            params, frames = w.getparams(), w.readframes(keep)
     buf = io.BytesIO()
     with wave.open(buf, 'wb') as o:
         o.setparams(params); o.writeframes(frames)

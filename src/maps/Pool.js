@@ -290,7 +290,7 @@ function tent(g, x, z, steel) {
   return { poles: poles.concat(table) };
 }
 function kickboards(g, list) { // ビート板 stacks: [x, y0, z, count, rotY]
-  const geo = [], col = [], palette = ['#2f8fe0', '#f2cc2a', '#f07aa0', '#5cc76a'].map((x) => new THREE.Color(x));
+  const geo = [], palette = ['#2f8fe0', '#f2cc2a', '#f07aa0', '#5cc76a'].map((x) => new THREE.Color(x));
   for (const [x, y0, z, n, ry] of list) for (let i = 0; i < n; i++) {
     const b = new THREE.BoxGeometry(0.3, 0.032, 0.44).rotateY(ry + (Math.random() - 0.5) * 0.15).translate(x + (Math.random() - 0.5) * 0.02, y0 + 0.016 + i * 0.033, z);
     const c = palette[(((i + Math.round(x * 3)) % 4) + 4) % 4], arr = [];
@@ -464,7 +464,7 @@ function surroundings(g) {
   const spots = [];
   for (let x = -26; x <= 26; x += 3.6 + rnd()) spots.push([x, FENCE_Z - 3 - rnd() * 3, 1.1 + rnd() * 0.4]);
   for (let z = -4; z > -29; z -= 4.5) spots.push([-FENCE_X - 1.6 - rnd(), z + rnd(), 0.9 + rnd() * 0.3]);
-  g.add(noInk(trees(spots, () => -0.03)));
+  g.add(noInk(trees(spots, () => -0.03, { refs: false }))); // refs: the crossing's weather list, which would frost these in its snow
 }
 
 /** ctx: MapContext (sound) */

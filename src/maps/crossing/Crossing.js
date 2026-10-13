@@ -457,7 +457,8 @@ function seaside(g) {
   g.add(shadows(box(600, 0.95, 0.35, concrete, 0, 0.47, WALL_Z)));
   // revetment slope down to the beach, then sand to the waterline
   const slope = new THREE.Mesh(new THREE.PlaneGeometry(600, Math.hypot(4.2, -SEA_Y)), concrete);
-  slope.rotation.x = -Math.PI / 2 - Math.atan2(-SEA_Y, 4.2); // far edge down toward the beach slope.position.set(0, SEA_Y / 2, WALL_Z - 0.2 - 2.1); slope.receiveShadow = true; g.add(slope);
+  slope.rotation.x = -Math.PI / 2 - Math.atan2(-SEA_Y, 4.2); // far edge down toward the beach
+  slope.position.set(0, SEA_Y / 2, WALL_Z - 0.2 - 2.1); slope.receiveShadow = true; g.add(slope);
   const sandTex = canvasTex(256, 256, speckle('#cdbb94', [150, 70], 6000, 1.5), [200, 4]);
   const sand = new THREE.Mesh(new THREE.PlaneGeometry(600, 14), pbr('#ffffff', { map: sandTex, roughness: 1 }));
   sand.rotation.x = -Math.PI / 2 - 0.035; sand.position.set(0, SEA_Y + 0.1, WALL_Z - 4.4 - 7); sand.receiveShadow = true; g.add(sand);
@@ -633,7 +634,7 @@ export function createCrossing(renderer) {
       scene.backgroundRotation.set(0, 0, 0); scene.environmentRotation.set(0, 0, 0);
       scene.backgroundIntensity = 1; scene.environmentIntensity = 0.45;
     },
-    unfit(scene) { scene.fog = null; scene.environment = null; scene.background = null; },
+    unfit(scene) { scene.fog = null; scene.environment = null; scene.background = null; this.lastHead = undefined; this.wasActive = false; }, // back later mid-pass: no stale train cues
     setSound(on) {
       if (on && !audio) audio = new AudioContext();
       if (!on && audio) { audio.close(); audio = null; }

@@ -71,6 +71,8 @@ export class MotionDirector {
     this.gesture = null;
     const bases = LIBRARY.base.filter((n) => this.have.has(n));
     this.base = bases.length ? pick(bases, this.base) : 'stand';
+    const a = this.c.actions[this.base];
+    if (a && this.c.current === a) { a.reset().play(); return; } // only one stand: play() would skip it and it'd freeze at its end
     this.c.play(this.base, { fade, once: this.base !== 'stand' });
   }
 

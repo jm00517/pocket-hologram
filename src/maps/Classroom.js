@@ -319,7 +319,7 @@ export function createClassroom(renderer, wind, ctx) {
     look: { exposure: 0.9, amb: ['#ffd2b0', 0.5], key: ['#ffd2ab', 2.4], keyDir: SUN_DIR.clone().setY(0.45), gi: 0.7,
       grade: { tint: [1.03, 0.98, 0.93], sat: 1.04, contrast: 1.08, sepia: 0.03, vignette: 0.4 }, bloom: 0.4, bloomThreshold: 1.0 },
     async fit(scene, U) {
-      g.scale.setScalar(U);
+      g.scale.setScalar(U); lastQuarter = null; // coming back after a quarter hour passed elsewhere isn't a chime
       const cam = sun.shadow.camera;
       cam.left = cam.bottom = -9 * U; cam.right = cam.top = 9 * U; cam.near = 1 * U; cam.far = 60 * U; cam.updateProjectionMatrix();
       bounce.intensity = 3 * U ** 2; bounce.distance = 9 * U;

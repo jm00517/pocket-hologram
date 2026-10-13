@@ -22,7 +22,7 @@ const calibration=new Calibration();
 // calibration/window layout, the MMD character, the drawer UI. Agents drive the engine over the bridge (engine/INDEX.md).
 const query=new URLSearchParams(location.search);
 const engine=createEngine({canvas});window.engine=engine;
-const {renderer,scene,camera,stage,post}=engine;
+const {renderer,scene,camera,stage}=engine;
 const spatial=new OffAxisCamera(camera,{far:30000});
 let eye={x:0,y:0,z:isMobile?.42:.6},rawEye={...eye};
 const restEye={...eye},viewEye={...eye},viewVel={x:0,y:0,z:0};
@@ -78,7 +78,7 @@ function layout(){
   // screen); skip then, or K = Infinity turns the stage position NaN and blacks out the scene until a reload.
   if(charHeight&&innerHeight)K=charHeight/(.8*viewport().h);
   const d=dims();spatial.setCalibration(d);
-  if(chamber)scene.remove(chamber);
+  if(chamber){scene.remove(chamber);chamber.traverse(o=>{o.geometry?.dispose();o.material?.dispose()})} // layout runs on every resize
   const v=viewport(),depth=roomDepth(v)*K;
   chamber=createTestChamber(scene,{width:d.screenWidthM,height:d.screenHeightM,depth,step:Math.max(.01,v.w/12)*K});
   chamber.visible=!(engine.map&&charHeight);
@@ -87,11 +87,13 @@ function layout(){
   character?.resetPhysics();
 }
 
-function clearModels(){blob.visible=false;if(current){scene.remove(current);current=null}if(character){stage.remove(character.mesh);character=null}}
+function clearModels(){blob.visible=false;if(current){scene.remove(current);current=null}if(character){stage.remove(character.mesh);character.dispose();character=null}}
 
+let loadSeq=0; // the latest pick wins: an older, slower load must not replace it when it finally arrives
 async function loadCharacter(url,manager){
   status.textContent='loading character...';
-  const c=new Character();const mesh=await c.load(url,manager);
+  const my=++loadSeq,c=new Character();const mesh=await c.load(url,manager);
+  if(my!==loadSeq){c.dispose();return}
   clearModels();character=c;window.character=c; // console / future LLM hook
   c.life=new Life(c,{say:t=>window.chat?.say(t),P:lifeP});
   c.touch=new Touch(c,{say:t=>window.chat?.say(t),P:lifeP});
@@ -103,6 +105,7 @@ async function loadCharacter(url,manager){
   motionSel.innerHTML=['idle',...Object.keys(BUILTIN_MOTIONS).filter(n=>n!==IDLE_POSE)].map(n=>`<option>${n}</option>`).join('');
   // Library: every clip the director loaded (idle stands, fidgets, gestures), for previewing one by one.
   c.directorReady.then(()=>{
+    if(my!==loadSeq)return;
     const g=document.createElement('optgroup');g.label='library';
     for(const n of [...c.director.have].sort())g.append(new Option(n,'lib:'+n));
     if(g.children.length)motionSel.insertBefore(g,motionSel.querySelector('optgroup'));
@@ -128,8 +131,9 @@ document.body.append(crosshair);
 freeCam.controls.addEventListener('lock',()=>crosshair.style.display='block');
 freeCam.controls.addEventListener('unlock',()=>crosshair.style.display='none');
 canvas.addEventListener('click',()=>{
-  if(!freeCam.on||!character)return;
-  if(!freeCam.controls.isLocked){freeCam.controls.lock();return}
+  if(!freeCam.on)return;
+  if(!freeCam.controls.isLocked){freeCam.controls.lock();return} // mouse-look works with or without a character
+  if(!character)return;
   ray.setFromCamera(new THREE.Vector2(0,0),camera);
   const m=engine.mapInstance,hit=m?.moveTo&&ray.intersectObjects(m.walkable??[],false)[0];
   if(hit)m.moveTo(m.group.worldToLocal(hit.point.clone()));
@@ -231,7 +235,7 @@ engine.on('beforeFrame',dt=>{
     // VR: the headset off your face (session hidden) counts as away, so putting it back on is a return
     const inst=engine.mapInstance,xr=engine.xr,present=xr?renderer.xr.getSession()?.visibilityState!=='hidden':lastFace===null?null:performance.now()-lastFace<1500;
     camera.getWorldPosition(viewer); // the camera sits in engine.rig (scaled in VR)
-    const close=xr?viewer.distanceTo(character.bones['頭'].getWorldPosition(herHead))<.45*engine.units:present&&ve.z<restEye.z*.62;
+    const close=xr?viewer.distanceTo(character.bones['頭'].getWorldPosition(herHead))<.45*engine.units:present&&viewEye.z<restEye.z*.62; // the real eye, not the parallax-scaled one (parallax is only a look)
     character.life.update(dt,{viewer,present,close,map:engine.map,night:(inst?.sky?.values.elev??30)<-6,
       interests:(inst?.interests?.()??[]).map(i=>({p:engine.toWorld(i.p),label:i.label}))});
     character.applyWorld({wind:{dir:engine.wind.uniforms.uWindDir.value,amp:engine.wind.uniforms.uWindAmp.value,gain:lifeP.wind},hands:xr?grips.filter(g=>g.userData.src).map(g=>g.getWorldPosition(new THREE.Vector3())):[],radius:.05*engine.units});
@@ -253,7 +257,7 @@ addEventListener('pagehide',()=>character?.life.save());
 // sun (`<map>.elev`) and the crossing's weather (day / sunset / night). Moving a sun by hand turns it off.
 const clock={real:1,lat:37.5,set:{}};
 engine.params.define([
-  {id:'time.real',label:'실제 시각',doc:"Sun follows the real time of day (sky maps' elevation, the crossing's day/sunset/night). Setting a map's sun by hand turns this off.",min:0,max:1,step:1,get:()=>clock.real,set:v=>{clock.real=v;tickClock()}},
+  {id:'time.real',label:'실제 시각',doc:"Sun follows the real time of day (sky maps' elevation, the crossing's day/sunset/night). Setting a map's sun by hand turns this off.",min:0,max:1,step:1,get:()=>clock.real,set:v=>{clock.real=v;if(v)clock.set={};tickClock()}},
   {id:'time.lat',label:'위도',doc:'Latitude (deg) for the real-time sun: how high it climbs and how long the evening lasts. Default Seoul.',min:-66,max:66,step:.5,get:()=>clock.lat,set:v=>{clock.lat=v;tickClock()}},
 ]);
 function sunElevation(d=new Date()){ // ponytail: solar time = clock time (no longitude/equation of time), off by up to ~40 min

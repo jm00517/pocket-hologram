@@ -67,10 +67,13 @@ export function mountChatBar(getBehavior, controlsRoot, { route } = {}) {
   async function say(text) {
     const beh = b();
     if (!beh) return;
-    const me = ++turn, clauses = text.split(/(?<=[、。！？!?,.])/).map((s) => s.trim()).filter(Boolean);
+    // a clause of punctuation alone ('!?' -> '?') has nothing to sing: Miku's synth answers 400 to it
+    const me = ++turn, clauses = text.split(/(?<=[、。！？!?,.])/).map((s) => s.trim()).filter((s) => /[\p{L}\p{N}]/u.test(s));
+    if (!clauses.length) return;
+    let i = 0;
     try {
       let next = tts(clauses[0]);
-      for (let i = 0; i < clauses.length; i++) {
+      for (; i < clauses.length; i++) {
         const { audio, marks } = await next;
         if (me !== turn) return;
         if (i + 1 < clauses.length) next = tts(clauses[i + 1]);
@@ -85,7 +88,7 @@ export function mountChatBar(getBehavior, controlsRoot, { route } = {}) {
       if (me === turn) { beh.stopSpeaking(); beh.setState('idle'); }
       return;
     } catch { /* no server / no voice library */ }
-    browserSay(text);
+    if (me === turn) browserSay(clauses.slice(i).join('')); // only what wasn't said yet, and only if this is still the turn
   }
   function browserSay(text) {
     const beh = b();

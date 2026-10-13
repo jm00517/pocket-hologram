@@ -144,9 +144,12 @@ const skyFrag = /* glsl */`${COMMON}${LIGHT}
   // A matte painting: a snow range far beyond the far plane, drawn into the sky behind the clouds (the way film
   // backdrops put the big mountain in). Ridge height is a function of azimuth; its faces are lit by which way the
   // ridge slopes, and it sinks into the horizon haze.
+  // azimuth wraps: the distance to the peak is taken the short way round and the noise runs a whole number of
+  // cycles per turn, or the ridge steps where atan jumps (straight behind the viewer: in VR you turn round)
+  float matteK(float a) { return (mod(a - uMatte.y + 3.14159265, 6.2831853) - 3.14159265) / uMatte.w; }
   float matteRidge(float a) {
-    float k = (a - uMatte.y) / uMatte.w;
-    float n1 = texture(tNoise, vec3(a * 1.3, 0.37, 0.61)).r, n2 = texture(tNoise, vec3(a * 3.0, 0.11, 0.29)).g;
+    float k = matteK(a);
+    float n1 = texture(tNoise, vec3(a * (8.0 / 6.2831853), 0.37, 0.61)).r, n2 = texture(tNoise, vec3(a * (19.0 / 6.2831853), 0.11, 0.29)).g;
     return uMatte.z * (exp(-k * k) * (0.8 + 0.3 * n1) + 0.3 * (0.55 + 0.6 * n1) + 0.04 * n2);
   }
   bool matteHit(vec3 d) { float el = asin(clamp(d.y, -1.0, 1.0)); return uMatte.x > 0.0 && el > -0.02 && el < matteRidge(atan(-d.x, -d.z)); }
@@ -157,7 +160,7 @@ const skyFrag = /* glsl */`${COMMON}${LIGHT}
     float slope = (matteRidge(a + 0.03) - matteRidge(a - 0.03)) / 0.06;
     float sunSide = dot(normalize(uSun.xz + 1e-4), normalize(vec2(-d.z, d.x)));
     float lit = clamp(0.35 + 0.65 * tanh(slope * 2.5) * sunSide, 0.0, 1.0) * smoothstep(-0.05, 0.15, uSun.y);
-    float k = (a - uMatte.y) / uMatte.w, snow = smoothstep(r * 0.3, r * 0.45, el + 0.04 * (texture(tNoise, vec3(a * 4.0, el * 4.0, 0.5)).g - 0.5)) * exp(-k * k * 0.5); // snow on the massif, not the range
+    float k = matteK(a), snow = smoothstep(r * 0.3, r * 0.45, el + 0.04 * (texture(tNoise, vec3(a * (25.0 / 6.2831853), el * 4.0, 0.5)).g - 0.5)) * exp(-k * k * 0.5); // snow on the massif, not the range
     vec3 alb = mix(vec3(0.12, 0.12, 0.13), vec3(0.62, 0.65, 0.72), snow);
     vec3 col = alb * (uAmbHigh * 0.55 + uSunCol * 0.035 * lit);
     return mix(sky, mix(col * uSkyGain, uHorizon * uSkyGain, 0.3 + 0.35 * (1.0 - smoothstep(0.0, r * 0.5, el))), uMatte.x); // far: in the haze, more at its foot

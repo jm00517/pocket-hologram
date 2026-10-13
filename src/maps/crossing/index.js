@@ -59,7 +59,10 @@ export const crossingMap = ({ weather = 'sunset', foliage = 'full' } = {}) => de
         moveTo: { doc: 'Walk the subject to (x, z) in crossing metres; y follows the hill. x across the road, z toward the sea is negative.', args: { x: 'm', z: 'm' },
           run: ({ x = 0, z = 0 }) => { moveTo(new THREE.Vector3(x, groundY(z), z)); return { x, z }; } },
       },
-      async fit(scene, U) { crossing.fit(scene, U); current = await w.set(current, U); },
+      async fit(scene, U) {
+        crossing.fit(scene, U); crossing.group.position.copy(focus).multiplyScalar(-U); // a new character height changes U: the walked-to spot keeps up
+        current = await w.set(current, U);
+      },
       unfit(scene) { crossing.unfit(scene); },
       tick(t, { dt }) {
         crossing.tick(t, dt); w.tick(t, dt); fol?.tick(t);

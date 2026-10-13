@@ -58,7 +58,7 @@ export function createGI(renderer) {
               float d = length( toEm ), x = clamp( d / uEmRange[ i ], 0.0, 1.0 ), fall = ( 1.0 - x ) * ( 1.0 - x ) / ( 1.0 + 16.0 * x * x );
               vec3 L = toEm / max( d, 1e-4 );
               // panel emitters (vending glass) only light what's in front of them
-              fall *= dot( uEmNrm[ i ], uEmNrm[ i ] ) > 0.5 ? saturate( dot( ( viewMatrix * vec4( uEmNrm[ i ], 0.0 ) ).xyz, - L ) ) : 1.0;
+              fall *= dot( uEmNrm[ i ], uEmNrm[ i ] ) > 0.5 ? saturate( dot( normalize( ( viewMatrix * vec4( uEmNrm[ i ], 0.0 ) ).xyz ), - L ) ) /* normalize: VR's view matrix carries 1/U */ : 1.0;
               float wrap = clamp( ( dot( geometryNormal, L ) + 0.4 ) / 1.4, 0.0, 1.0 );
               emIrr += uEmCol[ i ] * fall * wrap;
               // light from behind her (the crossing lamps) shows as a coloured rim on the silhouette, anime style

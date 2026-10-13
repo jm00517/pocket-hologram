@@ -140,6 +140,8 @@ export class Character {
     const clip = isPose ? await this.poseClip(url, name) : await new Promise((ok, err) => this.loader.loadAnimation(url, this.mesh, ok, undefined, err));
     clip.name = name;
     transform?.(clip);
+    const old = this.actions[name]; // re-adding a name (a dropped file again): the old action would play on, unlisted
+    if (old) { old.stop(); this.mixer.uncacheAction(old.getClip()); if (this.current === old) this.current = null; }
     const a = this.mixer.clipAction(clip);
     a.setEffectiveWeight(0).play();
     this.actions[name] = a;
@@ -277,6 +279,25 @@ export class Character {
       this.inertia.before = null;
       this.needsPhysicsReset = true;
     };
+  }
+
+  // Free what the GC can't: Ammo (wasm) physics objects, the mixer, GPU buffers and textures. Call before dropping
+  // the character (a model switch), or every reload leaks a whole physics world.
+  dispose() {
+    const P = this.helper.objects.get(this.mesh)?.physics, A = globalThis.Ammo;
+    this.mixer?.stopAllAction();
+    if (this.mesh) this.helper.remove(this.mesh);
+    if (P && A?.destroy) {
+      for (const c of P.constraints) { P.world.removeConstraint(c.constraint); A.destroy(c.constraint); }
+      for (const b of [...P.bodies.map((r) => r.body), ...(this._hands ?? []).map((h) => h.body)]) {
+        P.world.removeRigidBody(b); A.destroy(b.getMotionState()); A.destroy(b.getCollisionShape()); A.destroy(b);
+      }
+      A.destroy(P.world); if (this._force) A.destroy(this._force);
+    }
+    this.mesh?.traverse((o) => {
+      o.geometry?.dispose();
+      for (const m of [].concat(o.material ?? [])) { for (const v of Object.values(m)) if (v?.isTexture) v.dispose(); m.dispose(); }
+    });
   }
 
   resetPhysics() {

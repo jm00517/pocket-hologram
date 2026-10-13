@@ -169,6 +169,7 @@ function snowfall() {
 
 // --------------------------------------------------------------------------------------------------------
 export function createWeather({ renderer, scene, crossing, post, ambient, key }) {
+  let gen = 0;
   let hasAssets = null, current = 'anime', reflector = null, snow = null, U = 1;
   const snowCover = (() => { const set = pbrSet('snow_02', [90, 90]); return set; });
   let snowTex = null;
@@ -190,7 +191,10 @@ export function createWeather({ renderer, scene, crossing, post, ambient, key })
     tick(t, dt) { snow?.visible && snow.userData.tick(t, dt); if (reflector?.visible) reflector.material.uniforms.uTime.value = t; },
     async set(name, unitsPerMeter) {
       U = unitsPerMeter ?? U;
+      // a newer set, or the map being left, makes this one stale: it must not write the scene after its awaits
+      const my = ++gen, stale = () => my !== gen || !crossing.group.visible;
       hasAssets ??= await fetch(`${PH}hdri/day.hdr`, { method: 'HEAD' }).then((r) => r.ok, () => false);
+      if (stale()) return current;
       if (hasAssets && !REFS.road.material.userData.dry) applyTextures();
       const w = WEATHERS[name]?.hdri && hasAssets ? WEATHERS[name] : WEATHERS.anime;
       current = w === WEATHERS.anime ? 'anime' : name;
@@ -199,7 +203,7 @@ export function createWeather({ renderer, scene, crossing, post, ambient, key })
         crossing.fit(scene, U, { force: true });
         renderer.toneMappingExposure = 1; post.grade(null); post.bloom.strength = 0.35; post.bloom.threshold = 1.15;
         ambient.color.set('#aaaaaa'); ambient.intensity = 1.1; key.color.set('#ffffff'); key.intensity = 0.6;
-        crossing.flareHolder.visible = true; crossing.redPower = 0;
+        crossing.flareHolder.visible = true; crossing.redPower = 0; REFS.sea?.setReflect(1); // the sea's own default
         for (const m of REFS.vending) m.emissiveIntensity = 0.55;
         for (const m of REFS.windows) m.emissiveIntensity = 0;
         for (const m of REFS.neonSigns) m.emissiveIntensity = 0;
@@ -208,6 +212,7 @@ export function createWeather({ renderer, scene, crossing, post, ambient, key })
         return current;
       }
       const sky = await loadSky(renderer, w.hdri, w.skySat, w.skyTame);
+      if (stale()) return current;
       // rotate the photo so its sun sits at the preset's azimuth; the light uses the same direction
       const az0 = Math.atan2(sky.sun.x, sky.sun.z), a = deg(w.az) - az0;
       scene.background = sky.tex; scene.environment = sky.env;

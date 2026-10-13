@@ -74,7 +74,8 @@ export function createCloudFluid(renderer, { N = 256, S = 32000, noise } = {}) {
       windOff.x += wind.x * dt; windOff.y += wind.z * dt;
       U.uDt.value = dt; U.uTime.value = t;
       U.uWindV.value.set(wind.x, wind.z); U.uStir.value = stir; U.uConf.value = conf; U.uTau.value = tau;
-      U.uHumT.value = 0.78 - cover * 0.4; // humidity noise sits around 0.58 U.uHumOff.value.set(-windOff.x / S * 2, -windOff.y / S * 2);
+      U.uHumT.value = 0.78 - cover * 0.4; // humidity noise sits around 0.58
+      U.uHumOff.value.set(-windOff.x / S * 2, -windOff.y / S * 2);
       U.uStirOff.value.set(-windOff.x / S * 3, -windOff.y / S * 3);
       const prev = renderer.getRenderTarget();
       U.tVel.value = vel.a.texture; pass('advectVel', vel.b); vel.swap();

@@ -6,7 +6,7 @@ vowel stretched to length), re-pitched with the WORLD vocoder and joined.
 
     python voice/teto_tts.py "こんにちは、テトだよ。" out.wav
 """
-import functools, json, os, re, sys
+import functools, json, os, re, sys, threading
 import numpy as np
 import pyopenjtalk
 import pyworld
@@ -49,7 +49,11 @@ def analysis(wav):
     f0 = pyworld.stonemask(x, f0, t, fs)
     sp, ap = pyworld.cheaptrick(x, f0, t, fs), pyworld.d4c(x, f0, t, fs)
     os.makedirs(os.path.dirname(cache), exist_ok=True)
-    np.savez(cache, f0=f0, sp=sp.astype(np.float32), ap=ap.astype(np.float32), fs=fs)
+    # write then rename: the warm-up thread and requests analyse at once, and a half-written .npz stays corrupt on disk
+    tmp = f'{cache}.{threading.get_ident()}.tmp'
+    with open(tmp, 'wb') as f:
+        np.savez(f, f0=f0, sp=sp.astype(np.float32), ap=ap.astype(np.float32), fs=fs)
+    os.replace(tmp, cache)
     return f0, sp, ap, fs
 
 

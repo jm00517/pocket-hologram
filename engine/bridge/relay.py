@@ -18,6 +18,8 @@ Only bind the server to 127.0.0.1: the "eval" command runs arbitrary JS in the p
 import itertools
 import json
 import queue
+import select
+import socket
 import threading
 import time
 
@@ -80,7 +82,13 @@ class Bridge:
             h.send_response(204); h.end_headers(); return
         if job['id'] not in self.waiting:   # caller gave up
             h.send_response(204); h.end_headers(); return
-        _reply(h, 200, job)
+        # a poll left open by a page that has since reloaded or closed would swallow the job: hand it back
+        if _closed(h.connection):
+            self.jobs.put(job); return
+        try:
+            _reply(h, 200, job)
+        except OSError:
+            self.jobs.put(job); raise
 
     def _result(self, h):
         r = _body(h)
@@ -94,6 +102,15 @@ class Bridge:
 def _body(h):
     n = int(h.headers.get('Content-Length', 0) or 0)
     return json.loads(h.rfile.read(n) or b'{}') if n else {}
+
+
+def _closed(conn):
+    """True if the client hung up: readable, and reading would return EOF."""
+    try:
+        r, _, _ = select.select([conn], [], [], 0)
+        return bool(r) and conn.recv(1, socket.MSG_PEEK) == b''
+    except OSError:
+        return True
 
 
 def _reply(h, code, obj):

@@ -43,7 +43,7 @@ export function createEngine({ canvas, far = 30000, maxPixelRatio = 2 } = {}) {
   const emit = (ev, ...a) => { for (const f of listeners[ev] ?? []) f(...a); };
 
   const defs = new Map(), instances = new Map();
-  let wanted = null, active = null, inst = null, subject = null, subjectH = 0, U = 1, token = 0;
+  let wanted = null, active = null, inst = null, subject = null, subjectH = 0, U = 1, mapQueue = Promise.resolve();
 
   const applyLook = (L) => {
     renderer.toneMappingExposure = L.exposure ?? 1; post.grade(L.grade ?? null);
@@ -80,7 +80,7 @@ export function createEngine({ canvas, far = 30000, maxPixelRatio = 2 } = {}) {
       const owner = creating, s = at ? new THREE.PositionalAudio(listener) : new THREE.Audio(listener);
       if (at) { s.position.set(...at); s.setRefDistance(ref * U); s.setRolloffFactor(1); }
       s.setLoop(loop); s.setVolume(gain);
-      (sounds.get(owner) ?? sounds.set(owner, []).get(owner)).push({ s, loop, url });
+      (sounds.get(owner) ?? sounds.set(owner, []).get(owner)).push({ s, loop, url, ref: at ? ref : null });
       if (!buffers.has(url)) buffers.set(url, audioLoader.loadAsync(url));
       // beds start anywhere in their loop, so layers never line up
       buffers.get(url).then((b) => { s.setBuffer(b); if (loop) s.offset = Math.random() * b.duration; if (loop && owner === active) s.play(); }, (e) => console.warn('sound', url, e.message ?? e));
@@ -116,6 +116,29 @@ export function createEngine({ canvas, far = 30000, maxPixelRatio = 2 } = {}) {
   const commands = new Map();
   const command = (name, doc, args, run) => commands.set(name, { name, doc, args, run, owner: 'engine' });
 
+  // switch maps (setMap queues these)
+  const switchMap = async (id) => {
+    wanted = id ?? null;
+    if (!subject) return null;
+    if (inst && active !== wanted) inst.unfit?.(scene);
+    for (const i of instances.values()) i.group.visible = false;
+    params.remove('map'); for (const [n, c] of commands) if (c.owner === 'map') commands.delete(n);
+    resetScene();
+    active = wanted; inst = null;
+    if (!active) { syncSounds(); applyLook(DEFAULT_LOOK); post.setScale(U); captureGI(); emit('map', null); emit('baseline'); return null; }
+    if (!instances.has(active)) { creating = active; const i = defs.get(active).create(ctx); creating = null; instances.set(active, i); stage.add(i.group); }
+    syncSounds();
+    inst = instances.get(active);
+    inst.group.visible = true;
+    params.define((inst.params ?? []).map((p) => ({ ...p, id: `${active}.${p.id}` })), 'map');
+    for (const [n, c] of Object.entries(inst.commands ?? {})) commands.set(`${active}.${n}`, { ...c, name: `${active}.${n}`, owner: 'map' });
+    if (inst.look) applyLook(inst.look);
+    post.setScale(U);
+    await inst.fit(scene, U);
+    captureGI(); emit('map', active); emit('baseline');
+    return active;
+  };
+
   const engine = {
     renderer, scene, camera, stage, post, gi, ambient, key, params, wind, listener,
     /** 'rig': the app drives the camera (head-coupled window, free cam). 'manual': set by the camera command. */
@@ -136,29 +159,13 @@ export function createEngine({ canvas, far = 30000, maxPixelRatio = 2 } = {}) {
     maps: () => [...defs.values()].map(({ id, label, doc }) => ({ id, label, doc, active: id === active })),
 
     /** Switch map (null = none). Waits for the map's sky/textures. Before a subject exists it is only remembered. */
-    async setMap(id) {
-      if (id && !defs.has(id)) throw new Error(`unknown map ${id}; maps: ${[...defs.keys()].join(', ')}`);
-      wanted = id ?? null;
-      if (!subject) return null;
-      const my = ++token;
-      if (inst && active !== wanted) inst.unfit?.(scene);
-      for (const i of instances.values()) i.group.visible = false;
-      params.remove('map'); for (const [n, c] of commands) if (c.owner === 'map') commands.delete(n);
-      resetScene();
-      active = wanted; inst = null;
-      if (!active) { syncSounds(); applyLook(DEFAULT_LOOK); post.setScale(U); captureGI(); emit('map', null); emit('baseline'); return null; }
-      if (!instances.has(active)) { creating = active; const i = defs.get(active).create(ctx); creating = null; instances.set(active, i); stage.add(i.group); }
-      syncSounds();
-      inst = instances.get(active);
-      inst.group.visible = true;
-      params.define((inst.params ?? []).map((p) => ({ ...p, id: `${active}.${p.id}` })), 'map');
-      for (const [n, c] of Object.entries(inst.commands ?? {})) commands.set(`${active}.${n}`, { ...c, name: `${active}.${n}`, owner: 'map' });
-      if (inst.look) applyLook(inst.look);
-      post.setScale(U);
-      await inst.fit(scene, U);
-      if (my !== token) return active; // superseded by a later switch
-      captureGI(); emit('map', active); emit('baseline');
-      return active;
+    setMap(id) {
+      if (id && !defs.has(id)) return Promise.reject(new Error(`unknown map ${id}; maps: ${[...defs.keys()].join(', ')}`));
+      // one switch at a time: a fit still awaiting its HDRI would otherwise write its sky, fog and grade over the
+      // map switched to after it
+      const run = mapQueue.then(() => switchMap(id));
+      mapQueue = run.catch(() => {});
+      return run;
     },
 
     /** The character (or any object) the world is scaled to. height in scene units (default: bbox). */
@@ -166,6 +173,7 @@ export function createEngine({ canvas, far = 30000, maxPixelRatio = 2 } = {}) {
       subject = obj;
       subjectH = height ?? new THREE.Box3().setFromObject(obj).getSize(new THREE.Vector3()).y;
       U = subjectH / SUBJECT_HEIGHT_M;
+      for (const list of sounds.values()) for (const e of list) if (e.ref !== null) e.s.setRefDistance(e.ref * U); // a new height rescales the world
       obj.traverse((m) => { if (m.isMesh) { for (const mat of [].concat(m.material)) gi.patch(mat); m.castShadow = true; } });
       return engine.setMap(wanted);
     },

@@ -10,6 +10,7 @@ export class FaceTracker{
     this.landmarker=await FaceLandmarker.createFromOptions(vision,{baseOptions:{modelAssetPath:'https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task',delegate:'GPU'},runningMode:'VIDEO',numFaces:1});
   }
   async start(){
+    if(this.running)return; // a second click would hold a second camera stream and run a second loop
     const stream=await navigator.mediaDevices.getUserMedia({video:{facingMode:'user',width:{ideal:640},height:{ideal:480}},audio:false});
     this.video.srcObject=stream;await this.video.play();this.running=true;this.loop();
   }
