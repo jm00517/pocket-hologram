@@ -193,6 +193,40 @@ function ripples(renderer) {
   };
 }
 
+// --- splashes: synthesized, not recorded, so a hand gets its own sound at its own strength -----------------
+// A slap (noise through a low-pass that closes fast) and bubbles (short sine chirps: a bubble's ring climbs in
+// pitch as it shrinks and pops), written out as a WAV for ctx.sound.
+function splashWav(seed, { body = 1, bubbles = 6, len = 0.7 } = {}) {
+  const sr = 22050, n = Math.floor(len * sr), x = new Float32Array(n);
+  let st = seed;
+  const r = () => (st = (st * 16807) % 2147483647) / 2147483647;
+  let lp = 0;
+  for (let i = 0; i < n; i++) {
+    const t = i / sr, cut = 0.04 + 0.5 * Math.exp(-t / 0.05);
+    lp += cut * (r() * 2 - 1 - lp);
+    x[i] = body * lp * Math.min(1, t / 0.004) * Math.exp(-t / 0.12);
+  }
+  for (let b = 0; b < bubbles; b++) {
+    const t0 = 0.02 + r() * (len - 0.2), f0 = 500 + r() * 900, a = 0.12 + r() * 0.25, d = 0.015 + r() * 0.035;
+    let ph = 0;
+    for (let i = Math.floor(t0 * sr); i < Math.min(n, (t0 + d * 5) * sr); i++) {
+      const t = i / sr - t0;
+      ph += (2 * Math.PI * f0 * (1 + (1.5 * t) / d)) / sr;
+      x[i] += a * Math.sin(ph) * Math.exp(-t / d);
+    }
+  }
+  let peak = 1e-6;
+  for (const v of x) peak = Math.max(peak, Math.abs(v));
+  const buf = new DataView(new ArrayBuffer(44 + n * 2)), str = (o, s) => [...s].forEach((c, i) => buf.setUint8(o + i, c.charCodeAt(0)));
+  str(0, 'RIFF'); buf.setUint32(4, 36 + n * 2, true); str(8, 'WAVEfmt '); buf.setUint32(16, 16, true); buf.setUint16(20, 1, true); buf.setUint16(22, 1, true);
+  buf.setUint32(24, sr, true); buf.setUint32(28, sr * 2, true); buf.setUint16(32, 2, true); buf.setUint16(34, 16, true); str(36, 'data'); buf.setUint32(40, n * 2, true);
+  for (let i = 0; i < n; i++) buf.setInt16(44 + i * 2, (x[i] / peak) * 30000, true);
+  let bin = '';
+  const bytes = new Uint8Array(buf.buffer);
+  for (let i = 0; i < bytes.length; i += 8192) bin += String.fromCharCode(...bytes.subarray(i, i + 8192));
+  return 'data:audio/wav;base64,' + btoa(bin);
+}
+
 // --- the water ----------------------------------------------------------------------------------------
 function water(g) {
   const geo = new THREE.PlaneGeometry(PX * 2, PZ0 - PZ1);
@@ -551,7 +585,20 @@ export function createPool(renderer, wind, ctx) {
   basin(g); deck(g); ropes(g); fence(g, steel); schoolBuilding(g); changingRooms(g); surroundings(g);
   const rip = ripples(renderer), sea = water(g);
   ripTex.value = rip.texture;
-  let splashCool = 0;
+  let splashCool = 0, sloshCool = 0;
+  // splash sounds at the hand: three slaps and two plips (a drop, a hand leaving), round robin
+  const fx = { splash: [], plip: [], i: 0 };
+  if (ctx) {
+    for (const [kind, n, o] of [['splash', 3, { body: 1, bubbles: 7, len: 0.8 }], ['plip', 2, { body: 0.12, bubbles: 2, len: 0.35 }]])
+      for (let k = 0; k < n; k++) { const s = ctx.sound(splashWav(7 + k * 31 + kind.length, o), { loop: false, at: [0, WY, -5], ref: 1.5 }); g.add(s); fx[kind].push(s); }
+  }
+  const play = (kind, x, z, gain) => {
+    const s = fx[kind][fx.i++ % fx[kind].length];
+    if (!s?.buffer) return;
+    if (s.isPlaying) s.stop();
+    s.position.set(x, WY, z); s.setVolume(Math.min(1, gain)); s.setPlaybackRate(0.9 + Math.random() * 0.25); s.play();
+  };
+  const wet = [];
   const metal = [...startingBlocks(g, steel), ...flags(g), ...ladder(-PX, -3, 1), ...ladder(PX, -23, -1), ...ladder(-PX, -23, 1)];
   const t = tent(g, -8.8, -13, steel), clock = paceClock(g, -3, FENCE_Z + 0.2);
   addMerged(g, steel, metal.concat(t.poles, clock.stand));
@@ -598,16 +645,23 @@ export function createPool(renderer, wind, ctx) {
     ],
     // a click on the water drops a stone's worth of ring
     pokeable: [sea],
-    poke(p) { rip.push(p.x, p.z, 0.025, 0.07); },
+    poke(p) { rip.push(p.x, p.z, 0.025, 0.07); play('plip', p.x, p.z, 0.6); },
     /** hands: [{ p: map metres, v: m/s }] — a hand in the water pushes it aside in proportion to its speed */
     touch(hands, dt) {
-      splashCool -= dt;
-      for (const { p, v } of hands) {
-        const depth = WY + 0.03 - p.y, sp = v.length();
-        if (depth < 0 || depth > 0.6 || Math.abs(p.x) > PX || p.z > PZ0 || p.z < PZ1 || sp < 0.03) continue;
+      splashCool -= dt; sloshCool -= dt;
+      hands.forEach(({ p, v }, i) => {
+        const depth = WY + 0.03 - p.y, sp = v.length(), was = wet[i];
+        const inPool = depth >= 0 && depth <= 0.6 && Math.abs(p.x) <= PX && p.z <= PZ0 && p.z >= PZ1;
+        wet[i] = inPool;
+        // the sound of it: a slap going in (as hard as the hand comes down), a plip coming out, sloshing when swept fast
+        if (inPool && !was) play('splash', p.x, p.z, 0.2 + Math.max(0, -v.y) * 0.5);
+        else if (!inPool && was) play('plip', p.x, p.z, 0.35);
+        else if (inPool && sp > 1 && sloshCool <= 0) { sloshCool = 0.3; play('splash', p.x, p.z, sp * 0.25); }
+        if (!inPool || sp < 0.03) return;
         rip.push(p.x, p.z, Math.min(sp, 3) * dt * 0.12, 0.06);
         if (sp > 1.2 && splashCool <= 0 && ctx) { splashCool = 8; ctx.cue({ p: [p.x, WY, p.z], label: 'splash', line: '冷たそう〜', hold: 2 }); }
-      }
+      });
+      wet.length = hands.length;
     },
     tick(t, { dt } = {}) {
       time.value = t; sea.material.uniforms.uTime.value = t;
