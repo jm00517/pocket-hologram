@@ -75,6 +75,7 @@ export class Life {
    *  interests: [{ p: world Vector3, label }]; map: active map id; night: sky dark */
   update(dt, { viewer, present = null, close = false, interests = [], map, night = false }) {
     const c = this.c, b = c.behavior, d = c.director, P = this.P;
+    this.near = close; // you're at her face: she whispers (the chat bar reads it)
     if (!P.on) { c.lookTarget = viewer; return; }
     const busy = b.state !== 'idle' || !!b.speech;
     this.since += dt;

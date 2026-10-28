@@ -61,8 +61,9 @@ def _devoiced(m, nxt):
     return v in 'iu' and m[0] in VOICELESS and (nxt is None or nxt[0] in VOICELESS)
 
 
-def score(text):
-    """text -> ({'notes', 'pitch', 'controllers'}, marks): speech prosody (see above)."""
+def score(text, style=None):
+    """text -> ({'notes', 'pitch', 'controllers'}, marks): speech prosody (see above).
+    style 'whisper': for a listener right at her ear (see synth)."""
     phrases = teto_tts.morae(text)
     question = text.rstrip().endswith(('？', '?'))
     rnd = __import__('random').Random(hash(text) & 0xffff)  # same text, same reading
@@ -158,8 +159,19 @@ def _trim(frames, params, after):
     return a[:end * ch].tobytes()
 
 
-def synth(text):
-    sc, marks = score(text)
+def _whisper(frames, params):
+    """Her voice with the voicing taken out: WORLD keeps the spectral envelope (her mouth, the words) and re-excites
+    it with breath alone (f0 = 0, aperiodicity 1). The synth's own Breathiness/Air controllers barely move this voice."""
+    import numpy as np, pyworld as pw
+    x = np.frombuffer(frames, np.int16)[::params.nchannels].astype(np.float64) / 32768
+    f0, sp, ap = pw.wav2world(x, params.framerate)
+    y = pw.synthesize(np.zeros_like(f0), sp, np.ones_like(ap), params.framerate)[:len(x)]
+    y *= 0.8 * np.sqrt((x ** 2).mean()) / max(1e-9, np.sqrt((y ** 2).mean()))
+    return (np.clip(y, -1, 1) * 32767).astype(np.int16).tobytes(), params._replace(nchannels=1, nframes=len(y))
+
+
+def synth(text, style=None):
+    sc, marks = score(text, style)
     if not sc['notes']:
         raise ValueError('nothing to say')
     with _lock:
@@ -172,6 +184,8 @@ def synth(text):
         with wave.open(str(OUT)) as w:
             params, frames = w.getparams(), w.readframes(w.getnframes())
     frames = _trim(frames, params, (sc['notes'][-1]['start'] + sc['notes'][-1]['duration']) / TPS)
+    if style == 'whisper':
+        frames, params = _whisper(frames, params)
     buf = io.BytesIO()
     with wave.open(buf, 'wb') as o:
         o.setparams(params); o.writeframes(frames)

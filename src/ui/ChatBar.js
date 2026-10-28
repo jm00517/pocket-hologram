@@ -117,7 +117,7 @@ export function mountChatBar(getBehavior, controlsRoot, { route } = {}) {
   // Clause by clause: the first clause plays while the next is still synthesising, so the wait is one
   // clause (~0.3 s for Miku) instead of the whole sentence (~1 s).
   let voice = null, turn = 0, talking = false;
-  const tts = (text) => fetch('api/tts', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text }) })
+  const tts = (text, style) => fetch('api/tts', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text, style }) })
     .then((r) => (r.ok ? r.json() : Promise.reject(r.status)));
   /** interrupt: false for her own asides and reactions, which wait their turn instead of cutting a line off */
   async function say(text, { interrupt = true } = {}) {
@@ -128,12 +128,13 @@ export function mountChatBar(getBehavior, controlsRoot, { route } = {}) {
     if (!clauses.length) return;
     let i = 0;
     talking = true;
+    const style = beh.c.life?.near ? 'whisper' : undefined; // you're right at her face: she whispers the whole line
     try {
-      let next = tts(clauses[0]);
+      let next = tts(clauses[0], style);
       for (; i < clauses.length; i++) {
         const { audio, marks } = await next;
         if (me !== turn) return;
-        if (i + 1 < clauses.length) next = tts(clauses[i + 1]);
+        if (i + 1 < clauses.length) next = tts(clauses[i + 1], style);
         voice?.pause();
         voice = new Audio('data:audio/wav;base64,' + audio);
         route?.(voice);

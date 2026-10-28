@@ -3,7 +3,7 @@
 
     python scripts/server.py            # http://localhost:3210
 
-/api/tts  {"text": "こんにちは", "voice": "miku"|"teto"} -> {"audio": base64 WAV, "marks": [{"v": "a", "t": 0.12}, ...], "voice": ...}
+/api/tts  {"text": "こんにちは", "voice": "miku"|"teto", "style"?: "whisper"} -> {"audio": base64 WAV, "marks": [{"v": "a", "t": 0.12}, ...], "voice": ...}
 Voices: miku = VOCALOID6 Hatsune Miku through the headless synth (voice/v6_speech.py), teto = the Kasane Teto UTAU
 bank (voice/teto_tts.py). The default is the first one that works on this machine; with neither, /api/tts answers 503.
 
@@ -132,7 +132,8 @@ class Handler(SimpleHTTPRequestHandler):
                 raise ValueError('text must be 1-300 characters')
             if voice not in VOICES:
                 raise ValueError(f'voice must be one of {list(VOICES)}')
-            wav, marks = VOICES[voice](text)
+            # style 'whisper' (Miku only): you're right at her ear
+            wav, marks = VOICES[voice](text, req['style']) if voice == 'miku' and req.get('style') else VOICES[voice](text)
             self.reply(200, {'audio': base64.b64encode(wav).decode(), 'marks': marks, 'voice': voice})
         except ValueError as e:
             self.reply(400, {'error': str(e)})

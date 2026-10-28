@@ -198,6 +198,17 @@ $('#debug').onclick=()=>debugPanel.classList.toggle('hidden');
 bindCalibrationPanel(calPanel,calibration,layout);
 // her voice comes from her head: a 3D sound on the head bone (in VR you hear where she is)
 const voice3d=new THREE.PositionalAudio(engine.listener);voice3d.setVolume(1.3);
+// The room around her voice: a reverb per map (seconds to fade, how much of it), from a synthesized impulse
+// response (decaying noise, darker as it fades). Dry and wet both go on into her position's panner.
+const ROOMS={classroom:[1.1,.32],pool:[.7,.14],crossing:[.45,.08],citadel:[.3,.05],sky:[.25,.04],noneuclid:[1.5,.3]};
+const reverb=(()=>{const a=engine.listener.context,split=a.createGain(),merge=a.createGain(),conv=a.createConvolver(),wet=a.createGain();
+  split.connect(conv).connect(wet).connect(merge);voice3d.setFilters([split,merge]); // three joins split -> merge (dry)
+  const P={amount:1},set=()=>{const [T,w]=ROOMS[engine.map]??[.6,.1],n=Math.ceil(a.sampleRate*T),ir=a.createBuffer(2,n,a.sampleRate);
+    for(let ch=0;ch<2;ch++){const d=ir.getChannelData(ch);let lp=0;for(let i=0;i<n;i++){const t=i/a.sampleRate;lp+=(.2+.6*Math.exp(-t/(T*.3)))*((Math.random()*2-1)-lp);d[i]=lp*Math.exp(-6.9*t/T)}}
+    conv.buffer=ir;wet.gain.value=w*P.amount};
+  engine.on('map',set);set();
+  engine.params.define([{id:'audio.reverb',label:'목소리 울림',doc:"How much of the room's reverb is on her voice (each map has its own size and amount; 1 = as authored, 0 = dry).",min:0,max:3,step:.05,get:()=>P.amount,set:v=>{P.amount=v;set()}}]);
+  return {set}})();
 engine.on('map',()=>voice3d.setRefDistance(2.5*engine.units)); // full volume within 2.5 m (the window view sits ~4 m off)
 window.chat=mountChatBar(()=>character?.behavior,$('#charRows'),{route:el=>{voice3d.source?.disconnect();voice3d.setMediaElementSource(el);engine.listener.context.resume()}});
 
