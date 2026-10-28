@@ -455,6 +455,7 @@ export function createNonEuclid(ctx) {
     group: g,
     look: { exposure: 1.0, amb: ['#f4f0ea', 1.0], key: ['#fff6ea', 1.0], keyDir: new THREE.Vector3(0.3, 1, 0.6), gi: 0.5,
       grade: { tint: [1, 1, 1], sat: 1.05, contrast: 1.03, sepia: 0, vignette: 0.1 }, bloom: 0.35, bloomThreshold: 1.1 },
+    roam: [-5.4, 5.4, -6.4, 4.5], // inside the gallery's walls (props aren't avoided)
     interests: () => [{ p: [BOOTH.x, 1.6, BOOTH.z], label: 'booth' }, { p: [FRAME.x, 1.3, FRAME.z], label: 'frame' }, { p: [0, 1.6, CZ - 3], label: 'corridor' },
       { p: [-4.3, 1.2, -3.3], label: 'diorama' }, { p: [-0.8, 0.1, 0.8], label: 'little door' }, { p: [6, 1.5, GZ], label: 'turning corridor' }, { p: [-4, 1.4, -6.8], label: 'green door' }, { p: [3.5, 1.4, 4.9], label: 'blue door' }],
     params: [

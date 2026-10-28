@@ -181,6 +181,8 @@ export interface MapInstance {
   poke?(p: THREE.Vector3): void;
   /** every frame while active: the VR hands in map-local metres with their speed (m/s); [] outside VR */
   touch?(hands: { p: THREE.Vector3; v: THREE.Vector3 }[], dt: number): void;
+  /** where the character may walk (stage metres, [x0, x1, z0, z1]); without it she stays where she was put */
+  roam?: [number, number, number, number];
   /** things in the map worth a look (stage metres): the app's character glances at them */
   interests?(): { p: Vec3; label: string }[];
 }

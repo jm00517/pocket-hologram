@@ -332,6 +332,7 @@ export function createClassroom(renderer, wind, ctx) {
       scene.backgroundIntensity = 0.85; scene.environmentIntensity = 0.3;
     },
     // what she looks at (Life.js), stage metres
+    roam: [-3, 3, -1.4, 0.2], // where her feet may go (Follow.js): the strip in front of the desks
     interests: () => [{ p: [0, 1.6, Z0], label: 'board' }, { p: [0, 2.68, Z0], label: 'clock' }, { p: [X0, 1.7, -3], label: 'window' },
       { p: [-40, 2, -20], label: 'yard' }, { p: [X1, 1.2, -0.6], label: 'door' }],
     tick(t) {

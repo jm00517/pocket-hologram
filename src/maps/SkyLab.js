@@ -21,6 +21,7 @@ export function createSkyLab(ctx) {
   const origin = new THREE.Vector3();
   let units = 1;
   return {
+    roam: [-25, 25, -25, 25], // the open plain
     group: g,
     look: { exposure: 1.0, amb: ['#c8ccd4', 1.0], key: ['#ffffff', 0.9], keyDir: new THREE.Vector3(0.3, 0.6, 1), gi: 0.6,
       grade: { tint: [1, 1, 1], sat: 1.05, contrast: 1.05, sepia: 0, vignette: 0.15 }, bloom: 0.35, bloomThreshold: 1.2 },

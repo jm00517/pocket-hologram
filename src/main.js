@@ -16,6 +16,7 @@ import { mountParamsPanel } from './ui/ParamsPanel.js';
 import { Character, BUILTIN_MOTIONS, IDLE_POSE, DEFAULT_MODEL } from './character/Character.js';
 import { Life } from './character/Life.js';
 import { Touch } from './character/Touch.js';
+import { Follow } from './character/Follow.js';
 
 const $=s=>document.querySelector(s),canvas=$('#scene'),video=$('#camera'),status=$('#status'),debugPanel=$('#debugPanel'),calPanel=$('#calibration'),motionSel=$('#motion'),modelSel=$('#modelSel');
 const calibration=new Calibration();
@@ -62,11 +63,12 @@ const dims=()=>{const v=viewport();return{...calibration.data,screenWidthM:v.w*K
 let charHeight=0;
 let chamber,current=null,character=null;
 // her inner life (src/character/Life.js): shared by whichever model is loaded
-const lifeP={on:1,chatter:.5,curiosity:1,wind:1};
+const lifeP={on:1,chatter:.5,curiosity:1,wind:1,follow:1};
 engine.params.define([
   {id:'life.on',label:'생동감',doc:'Inner life on/off: gaze that wanders and comes back, reactions to the viewer (webcam), spoken asides.',min:0,max:1,step:1,get:()=>lifeP.on,set:v=>{lifeP.on=v}},
   {id:'life.chatter',label:'혼잣말',doc:'How often she talks to herself and whether greetings are spoken (0 = silent).',min:0,max:2,step:.05,get:()=>lifeP.chatter,set:v=>{lifeP.chatter=v}},
   {id:'life.wind',label:'머리카락 바람',doc:'How hard the world wind (wind.*) pushes her hair and skirt; 0 = still air for her.',min:0,max:4,step:.05,get:()=>lifeP.wind,set:v=>{lifeP.wind=v}},
+  {id:'life.follow',label:'따라오기',doc:"In VR she walks after you when you're more than 2 m off (inside the map's roam area) and turns to face you when you go round her.",min:0,max:1,step:1,get:()=>lifeP.follow,set:v=>{lifeP.follow=v}},
   {id:'life.curiosity',label:'호기심',doc:'How often her gaze leaves you to look around or at things in the map.',min:0,max:3,step:.05,get:()=>lifeP.curiosity,set:v=>{lifeP.curiosity=v}},
 ]);
 // Contact shadow: a soft dark blob under the feet. Without it the eye reads the character as floating.
@@ -99,6 +101,7 @@ async function loadCharacter(url,manager){
   const aside=t=>window.chat?.say(t,{interrupt:false}); // her own lines never cut off one she's saying
   c.life=new Life(c,{say:aside,P:lifeP});
   c.touch=new Touch(c,{say:aside,P:lifeP,slap:p=>slap(p)});
+  c.follow=new Follow(c);
   c.bones['頭'].add(voice3d);
   const h=new THREE.Box3().setFromObject(mesh).getSize(new THREE.Vector3()).y;
   charHeight=h;
@@ -287,6 +290,7 @@ engine.on('beforeFrame',dt=>{
       interests:(inst?.interests?.()??[]).map(i=>({p:engine.toWorld(i.p),label:i.label}))});
     character.applyWorld({wind:{dir:engine.wind.uniforms.uWindDir.value,amp:engine.wind.uniforms.uWindAmp.value,gain:lifeP.wind},hands:xr?grips.filter(g=>g.userData.src).map(g=>g.getWorldPosition(new THREE.Vector3())):[],radius:.05*engine.units});
     character.touch.update(dt,{hands:xr?grips.map((g,i)=>g.userData.src&&{p:g.getWorldPosition(new THREE.Vector3()),src:g.userData.src,tip:tipOf(i)}).filter(Boolean):[],viewer,U:engine.units});
+    character.follow.update(dt,{viewer:stage.worldToLocal(viewer.clone()).divideScalar(engine.units),roam:inst?.roam??null,on:!!xr&&!!lifeP.follow,U:engine.units});
     character.update(dt);const c=character.bones['センター'].getWorldPosition(blob.position);stage.worldToLocal(c);c.y=.01}
   debugPanel.textContent=`filtered eye (m)
 x ${eye.x.toFixed(3)}
@@ -322,6 +326,8 @@ async function tickClock(){
   }
   if(id==='crossing'){const w=e>12?'day':e>-4?'sunset':'night';if(clock.weather!==w){clock.weather=w;await engine.params.set('crossing.weather',w)}}
 }
+engine.on('map',()=>character?.follow?.home()); // a new map: she starts where it put her
+renderer.xr.addEventListener('sessionend',()=>character?.follow?.home()); // out of VR: back in the window
 engine.on('map',()=>{clock.set={};clock.weather=null;setTimeout(tickClock,500)});
 setInterval(tickClock,20000);
 // VR: an ENTER VR button when a headset is there (Quest via Link/Air Link + Chrome/Edge on this PC).
