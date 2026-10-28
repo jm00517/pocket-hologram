@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { PointerLockControls } from 'three/addons/controls/PointerLockControls.js';
 import { VRButton } from 'three/addons/webxr/VRButton.js';
 import { XRControllerModelFactory } from 'three/addons/webxr/XRControllerModelFactory.js';
+import { XRHandModelFactory } from 'three/addons/webxr/XRHandModelFactory.js';
 import { createEngine, connectBridge } from '../engine/index.js';
 import { FaceTracker } from './tracking/FaceTracker.js';
 import { OffAxisCamera } from './spatial/OffAxisCamera.js';
@@ -97,7 +98,7 @@ async function loadCharacter(url,manager){
   clearModels();character=c;window.character=c; // console / future LLM hook
   const aside=t=>window.chat?.say(t,{interrupt:false}); // her own lines never cut off one she's saying
   c.life=new Life(c,{say:aside,P:lifeP});
-  c.touch=new Touch(c,{say:aside,P:lifeP});
+  c.touch=new Touch(c,{say:aside,P:lifeP,slap:p=>slap(p)});
   c.bones['頭'].add(voice3d);
   const h=new THREE.Box3().setFromObject(mesh).getSize(new THREE.Vector3()).y;
   charHeight=h;
@@ -235,8 +236,17 @@ const MODELS=[
 const viewer=new THREE.Vector3(),herHead=new THREE.Vector3();
 // VR hands: the Touch controllers (their own models), in the rig so they scale with it; Touch.js reads them
 const controllerModels=new XRControllerModelFactory();
-const grips=[0,1].map(i=>{const g=renderer.xr.getControllerGrip(i);g.add(controllerModels.createControllerModel(g));
-  g.addEventListener('connected',e=>{g.userData.src=e.data});g.addEventListener('disconnected',()=>{g.userData.src=null});engine.rig.add(g);return g});
+const grips=[0,1].map(i=>{const g=renderer.xr.getControllerGrip(i),m=controllerModels.createControllerModel(g);g.add(m);
+  g.addEventListener('connected',e=>{g.userData.src=e.data;m.visible=!e.data.hand});g.addEventListener('disconnected',()=>{g.userData.src=null});engine.rig.add(g);return g});
+// bare hands (Quest hand tracking): a hand mesh instead of a controller; the grip still gives the palm
+const handModels=new XRHandModelFactory();
+const hands=[0,1].map(i=>{const h=renderer.xr.getHand(i);h.add(handModels.createHandModel(h,'mesh'));engine.rig.add(h);return h});
+const tipOf=i=>{const j=hands[i]?.joints?.['index-finger-tip'];return j&&grips[i].userData.src?.hand?j.getWorldPosition(new THREE.Vector3()):null};
+// a palm slap (high five): a short band of noise, made here rather than recorded
+const slap=(()=>{const s=new THREE.PositionalAudio(engine.listener),a=engine.listener.context,n=Math.round(a.sampleRate*.12),b=a.createBuffer(1,n,a.sampleRate),d=b.getChannelData(0);
+  let lp=0;for(let i=0;i<n;i++){const t=i/a.sampleRate;lp+=.55*((Math.random()*2-1)-lp);d[i]=(Math.random()*2-1-lp*.6)*Math.exp(-t/.018)*Math.min(1,t/.0008)}
+  s.setBuffer(b);s.setVolume(1.4);engine.rig.add(s);
+  return p=>{s.setRefDistance(1.5*engine.units);s.position.copy(engine.rig.worldToLocal(p.clone()));if(s.isPlaying)s.stop();s.play()}})();
 // talking in VR: hold a trigger (or, hands tracked, a pinch) to speak to her; a buzz says it's listening
 for(const i of [0,1]){const c=renderer.xr.getController(i);
   c.addEventListener('selectstart',()=>{window.chat?.listenStart();grips[i].userData.src?.gamepad?.hapticActuators?.[0]?.pulse?.(0.3,60)});
@@ -276,7 +286,7 @@ engine.on('beforeFrame',dt=>{
     character.life.update(dt,{viewer,present,close,map:engine.map,night:(inst?.sky?.values.elev??30)<-6,
       interests:(inst?.interests?.()??[]).map(i=>({p:engine.toWorld(i.p),label:i.label}))});
     character.applyWorld({wind:{dir:engine.wind.uniforms.uWindDir.value,amp:engine.wind.uniforms.uWindAmp.value,gain:lifeP.wind},hands:xr?grips.filter(g=>g.userData.src).map(g=>g.getWorldPosition(new THREE.Vector3())):[],radius:.05*engine.units});
-    character.touch.update(dt,{hands:xr?grips.filter(g=>g.userData.src).map(g=>({p:g.getWorldPosition(new THREE.Vector3()),src:g.userData.src})):[],viewer,U:engine.units});
+    character.touch.update(dt,{hands:xr?grips.map((g,i)=>g.userData.src&&{p:g.getWorldPosition(new THREE.Vector3()),src:g.userData.src,tip:tipOf(i)}).filter(Boolean):[],viewer,U:engine.units});
     character.update(dt);const c=character.bones['センター'].getWorldPosition(blob.position);stage.worldToLocal(c);c.y=.01}
   debugPanel.textContent=`filtered eye (m)
 x ${eye.x.toFixed(3)}
@@ -318,6 +328,6 @@ setInterval(tickClock,20000);
 // ?xremu fakes a Quest 2 in the browser (Meta's IWER) to test without one.
 (async()=>{
   if(query.has('xremu')){const {XRDevice,metaQuest2}=await import('https://cdn.jsdelivr.net/npm/iwer@2.4.0/build/iwer.module.min.js');window.xrDevice=new XRDevice(metaQuest2);window.xrDevice.installRuntime({forceInstall:true})}
-  if(await navigator.xr?.isSessionSupported('immersive-vr').catch(()=>false))document.body.appendChild(VRButton.createButton(renderer));
+  if(await navigator.xr?.isSessionSupported('immersive-vr').catch(()=>false))document.body.appendChild(VRButton.createButton(renderer,{optionalFeatures:['hand-tracking']}));
 })();
 connectBridge(engine);
