@@ -20,7 +20,7 @@ from a CDN importmap (`index.html`).
 | Real-time clock | In `src/main.js`: `time.real` drives every sky map's `<map>.elev` and the crossing's weather from the browser clock (`time.lat`). Moving a sun by hand turns it off. |
 | `src/ui/` | `ParamsPanel.js` (controls generated from the param registry), `ChatBar.js` (TTS + lip sync), `CalibrationPanel.js`. |
 | `src/tracking/`, `src/spatial/`, `src/calibration/` | Face/iris tracking, `OffAxisCamera`, physical screen calibration. |
-| `scripts/server.py` | Dev server on port 3210. It serves static files with no-store, `/api/tts` (speech: `voice` miku or teto), and `/api/engine` (bridge). |
+| `scripts/server.py` | Dev server on port 3210. It serves static files with no-store, `/api/tts` (speech: `voice` miku or teto), `/api/chat` (her replies from a local LLM through Ollama, `PH_LLM`, default gemma3:4b), `/api/stt` (speech to text, `voice/stt_worker.py`, faster-whisper in its own process) and `/api/engine` (bridge). The chat bar talks through them: type, or hold the mic (VR: a trigger or a pinch); the browser's own speech recognition is used first when it has one. |
 | `scripts/get-audio.py` | Downloads the ambience and spot sounds into `assets/audio/` (gitignored; sources and licences in the script and `assets/audio/CREDITS.txt`): waves, the crossing recording, cicadas, higurashi, school ground, pool, meadow, night insects, rain. |
 | `scripts/get-polyhaven.py` | Downloads the CC0 textures, HDRIs and plant models into `assets/polyhaven/` (gitignored). |
 | `voice/v6_speech.py` | Japanese speech through the local VOCALOID6 Hatsune Miku V6 model: one note per mora, accent from `teto_tts`. Needs the headless synth CLI (`V6_SYNTH`) and the installed licences; not redistributed. |

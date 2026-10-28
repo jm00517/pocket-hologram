@@ -226,6 +226,10 @@ const viewer=new THREE.Vector3(),herHead=new THREE.Vector3();
 const controllerModels=new XRControllerModelFactory();
 const grips=[0,1].map(i=>{const g=renderer.xr.getControllerGrip(i);g.add(controllerModels.createControllerModel(g));
   g.addEventListener('connected',e=>{g.userData.src=e.data});g.addEventListener('disconnected',()=>{g.userData.src=null});engine.rig.add(g);return g});
+// talking in VR: hold a trigger (or, hands tracked, a pinch) to speak to her; a buzz says it's listening
+for(const i of [0,1]){const c=renderer.xr.getController(i);
+  c.addEventListener('selectstart',()=>{window.chat?.listenStart();grips[i].userData.src?.gamepad?.hapticActuators?.[0]?.pulse?.(0.3,60)});
+  c.addEventListener('selectend',()=>window.chat?.listenStop())}
 const mapHands=[];
 // VR locomotion on the sticks: left glides where you look (1.5 m/s), right snaps you 30° around your head.
 // It moves the rig, so walking through a map's doors (portals) works the same as stepping through in the room;
