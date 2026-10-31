@@ -1,0 +1,98 @@
+/* Story editor (tools/editor.js): file list | CodeMirror + toolbar + output tabs (문제 / 퍼즈 / 그래프 / 굽기).
+   Uses dev.css's colour tokens, with fallbacks so the editor still reads right on a page without them. CM's own
+   light theme is overridden here rather than loading a theme stylesheet: one less CDN file to pin. */
+.ed{--e-bg:var(--bg,#080b10);--e-panel:var(--panel,#0c1017);--e-line:var(--line,#ffffff1a);--e-edge:var(--edge,#ffffff33);--e-fg:var(--fg,#e8edf3);
+  --e-mute:var(--mute,#8a93a3);--e-acc:var(--acc,#9fd);--e-blue:var(--blue,#8cf);--e-num:var(--num,#bfe2ff);--e-warn:var(--warn,#fc6);--e-bad:var(--bad,#f88);
+  --e-ok:var(--ok,#6d9);--e-her:var(--her,#ffd6ec);--e-mono:var(--mono,ui-monospace,Consolas,monospace);
+  flex:1;height:100%;min-height:0;min-width:0;display:grid;grid-template-columns:150px minmax(0,1fr);color:var(--e-fg);background:var(--e-bg);font-size:13px}
+.ed button{padding:5px 9px}
+.ed-files{display:flex;flex-direction:column;min-height:0;border-right:1px solid var(--e-line);background:var(--e-panel)}
+.ed-files ul{list-style:none;margin:0;padding:4px 0;overflow:auto;flex:1}
+.ed-files li{display:flex;align-items:center;gap:4px;padding:5px 10px;cursor:pointer;font:12px var(--e-mono);color:var(--e-mute)}
+.ed-files li span{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ed-files li:hover{color:var(--e-fg);background:#ffffff08}
+.ed-files li.on{color:var(--e-acc);background:#ffffff10}
+.ed-files i{font-style:normal;font-size:11px}
+.ed-dirty{color:var(--e-warn)}
+.ed-errs{padding:0 5px;border-radius:999px;background:var(--e-bad);color:#000}
+.ed-new{margin:6px;flex:none}
+.ed-main{display:grid;grid-template-columns:minmax(0,1fr);grid-template-rows:auto minmax(0,1fr) minmax(130px,36%);min-width:0;min-height:0}  /* explicit column: a wide graph scrolls in its pane instead of widening the whole column */
+.ed-bar{display:flex;align-items:center;gap:6px;flex-wrap:wrap;padding:6px 8px;border-bottom:1px solid var(--e-line)}
+.ed-bar label{display:flex;align-items:center;gap:4px;color:var(--e-mute);font-size:12px}
+.ed-runs{width:72px;padding:5px 6px}
+.ed-name{font:600 12px var(--e-mono);color:var(--e-num);white-space:nowrap}
+.ed-msg{flex:1;min-width:120px;color:var(--e-acc);font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ed-msg.bad{color:var(--e-bad)}
+.ed-cm{min-height:0;position:relative}
+.ed-out{display:flex;flex-direction:column;min-height:0;border-top:1px solid var(--e-line);background:var(--e-panel)}
+.ed-tabs{display:flex;flex:none;border-bottom:1px solid var(--e-line)}
+.ed-tabs button{border:0;border-bottom:2px solid transparent;border-radius:0;background:none;color:var(--e-mute);padding:6px 12px}
+.ed-tabs button.on{color:var(--e-acc);border-bottom-color:var(--e-acc)}
+.ed-pane{flex:1;min-height:0;overflow:auto;padding:6px 10px}
+.ed-pane h4{margin:10px 0 4px;font-size:12px;font-weight:600;color:var(--e-acc)}
+.ed-hint{margin:4px 0;color:var(--e-mute);font-size:12px}
+.ed-sum{margin:4px 0}
+.ed-list{list-style:none;margin:0;padding:0}
+.ed-list li{padding:3px 6px;border-radius:6px;cursor:pointer;font-size:12px;border-left:3px solid transparent}
+.ed-list li:hover{background:#ffffff0c}
+.ed-list li.ed-error{border-left-color:var(--e-bad)}
+.ed-list li.ed-warning{border-left-color:var(--e-warn)}
+.ed-list li.ed-info{border-left-color:var(--e-blue)}
+.ed-list li.ed-hint{cursor:default}
+.ed-at{font:12px var(--e-mono);color:var(--e-num)}
+.ed-chips{display:flex;flex-wrap:wrap;gap:4px}
+.ed-chip{font:12px var(--e-mono);padding:3px 8px}
+.ed-chip small{color:var(--e-mute)}
+.ed-row{display:flex;align-items:center;gap:8px;margin:4px 0 8px}
+.ed-row progress{width:160px;flex:none}
+.ed-prog{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12px}
+
+/* CodeMirror, dark */
+.ed .CodeMirror{height:100%;background:var(--e-bg);color:var(--e-fg);font:13.5px/1.55 var(--e-mono)}
+.ed .CodeMirror-gutters{background:var(--e-panel);border-right:1px solid var(--e-line)}
+.ed .CodeMirror-linenumber{color:#5a6372}
+.ed .CodeMirror-cursor{border-left-color:var(--e-fg)}
+.ed .CodeMirror-selected{background:#2a5d8f66!important}
+.ed .CodeMirror-focused .CodeMirror-selected{background:#2a5d8f99!important}
+.ed .CodeMirror-matchingbracket{color:var(--e-acc)!important}
+.ed .CodeMirror-dialog{background:var(--e-panel);color:var(--e-fg);border-color:var(--e-line)}
+.ed .CodeMirror-dialog input{background:#111;color:var(--e-fg);border:1px solid var(--e-edge);border-radius:4px;padding:2px 4px}
+.ed .cm-searching{background:#fc63;outline:1px solid #fc6a}
+.ed-gut{width:14px}
+.ed-mark{display:block;text-align:center;font-size:10px;line-height:inherit;cursor:help}
+.ed-mark.ed-error{color:var(--e-bad)}
+.ed-mark.ed-warning{color:var(--e-warn)}
+.ed-mark.ed-info{color:var(--e-blue)}
+/* ink tokens */
+.ed .cm-ink-knot{color:var(--e-acc);font-weight:700}
+.ed .cm-ink-fn{color:#c9a7ff}
+.ed .cm-ink-stitch{color:#7fd6c8;font-weight:600}
+.ed .cm-ink-choice{color:var(--e-warn);font-weight:700}
+.ed .cm-ink-gather{color:#e8b86d;font-weight:700}
+.ed .cm-ink-label{color:#e8b86d}
+.ed .cm-ink-bracket{color:var(--e-warn)}
+.ed .cm-ink-divert{color:var(--e-blue)}
+.ed .cm-ink-glue{color:var(--e-mute)}
+.ed .cm-ink-logic{color:#c9a7ff}
+.ed .cm-keyword{color:#ff9ecf}
+.ed .cm-ink-tag{color:#7f8aa0}
+.ed .cm-ink-tagname{color:#9fb7d6}
+.ed .cm-ink-tagbad{color:var(--e-bad);text-decoration:wavy underline}
+.ed .cm-ink-speaker{color:var(--e-her);font-weight:600}
+.ed .cm-comment{color:#5f6b7d;font-style:italic}
+
+/* knot graph */
+.ed-graph{display:block}
+.ed-graph .ed-edges path{fill:none;stroke:#8cf8;stroke-width:1.4;marker-end:url(#ed-arrow)}
+.ed-graph .ed-edges path.back{stroke-dasharray:4 3;stroke:#8cf5}
+.ed-graph marker path{fill:#8cfa}
+.ed-n{cursor:pointer}
+.ed-n rect{fill:#141a24;stroke:#ffffff33;stroke-width:1}
+.ed-n text{fill:var(--e-fg);font:12px var(--e-mono)}
+.ed-n text.sub{fill:var(--e-mute);font-size:10px}
+.ed-n.stitch rect{fill:#10151d;stroke-dasharray:3 2}
+.ed-n.root rect{stroke:var(--e-acc)}
+.ed-n.trig rect{stroke:var(--e-warn)}
+.ed-n.seen rect{fill:#173326}
+.ed-n.now rect{stroke:#fff;stroke-width:2}
+.ed-n:hover rect{stroke:var(--e-blue);stroke-width:2}

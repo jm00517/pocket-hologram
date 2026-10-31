@@ -18,9 +18,12 @@ from a CDN importmap (`index.html`).
 | `src/maps/Spherical.js` | The gallery's night-blue door: a planet 25 m round in S² x R. Each thing is drawn twice, the short way and the long way round (the torii ahead also stands behind you; your figure smears round the horizon). Same log-map shader and step folding as the garden; triangles astride the antipode are dropped. |
 | `src/character/` | MMD character: `Character.js` (load, physics, play), `Behavior.js` (speech/expressions, `speakTimed`), `Motions.js` (director), `Touch.js` (VR hands: head pats, cheek pokes, waves, high fives, holding hands), `Follow.js` (in VR she walks after you inside the map's `roam` rect and turns to face you; an in-place loop of Bandai's walk), `Life.js` (attention, reactions to the viewer and to map cues, asides, memory of visits in localStorage `ph.memory`; `life.*` params), `Hands.js`, `Inertia.js`. |
 | Real-time clock | In `src/main.js`: `time.real` drives every sky map's `<map>.elev` and the crossing's weather from the browser clock (`time.lat`). Moving a sun by hand turns it off. |
-| `src/ui/` | `ParamsPanel.js` (controls generated from the param registry), `ChatBar.js` (TTS + lip sync), `CalibrationPanel.js`. |
+| `src/ui/` | `ParamsPanel.js` (controls generated from the param registry), `ChatBar.js` (TTS + lip sync; the story speaks through its `say`, takes spoken answers with `hear`, sends `persona()` as chat context and gets back how a chat made her feel), `CalibrationPanel.js`. |
+| `story/` | The dating-sim layer's content: ink scripts (`main.ink` is the entry and a tour of every feature, `lib.ink` the externals). `story/README.md` is the authors' guide (Korean): line format, direction tags, choice tags, triggers, events. |
+| `src/story/` | The dating-sim layer. `index.js` (`mountStory`: the glue: Stage over both views, story.* settings, events -> triggers, menu, story.* engine commands), `Script.js` (pure: tag vocabulary, compile, lint, fuzz, `matchChoice`), `Runner.js` (plays ink on a Stage: scenes, triggers, saves, read marks, memories), `Director.js` (direction tags on her, the engine, sound, effects), `DomView.js` / `XRView.js` (dialogue box, choices, menu, backlog: monitor / headset), `Audio.js` (#bgm #sfx), `Fx.js` (emotes, fades), `Store.js` (saves: server, else localStorage), `Gestures.js` (head nod / shake), `ink.js` (inkjs 2.3.2). |
+| `tools/dev.html` | Story developer tools (open it beside the game): an ink editor (`editor.js`: compile errors, lint, fuzz, voice baking, knot graph, play from the cursor) and live tabs driving the open game over the bridge (`dev.js`: run, vars, triggers, directions, saves, log). |
 | `src/tracking/`, `src/spatial/`, `src/calibration/` | Face/iris tracking, `OffAxisCamera`, physical screen calibration. |
-| `scripts/server.py` | Dev server on port 3210. It serves static files with no-store, `/api/tts` (speech: `voice` miku or teto), `/api/chat` (her replies from a local LLM through Ollama, `PH_LLM`, default gemma3:4b), `/api/stt` (speech to text, `voice/stt_worker.py`, faster-whisper in its own process) and `/api/engine` (bridge). The chat bar talks through them: type, or hold the mic (VR: a trigger or a pinch); the browser's own speech recognition is used first when it has one. |
+| `scripts/server.py` | Dev server on port 3210. It serves static files with no-store, `/api/tts` (speech: `voice` miku or teto), `/api/chat` (her replies from a local LLM through Ollama, `PH_LLM`, default gemma3:4b), `/api/stt` (speech to text, `voice/stt_worker.py`, faster-whisper in its own process) `/api/engine` (bridge), `/api/story` (list / write `story/*.ink`), `/api/save` (story save slots as files in `saves/`, gitignored). `/api/tts` keeps lines asked with `cache: true` in `assets/voicecache/` (the dev tools bake story lines that way). `--check` runs its self-check. The chat bar talks through them: type, or hold the mic (VR: a trigger or a pinch); the browser's own speech recognition is used first when it has one. |
 | `scripts/get-audio.py` | Downloads the ambience and spot sounds into `assets/audio/` (gitignored; sources and licences in the script and `assets/audio/CREDITS.txt`): waves, the crossing recording, cicadas, higurashi, school ground, pool, meadow, night insects, rain. |
 | `scripts/get-polyhaven.py` | Downloads the CC0 textures, HDRIs and plant models into `assets/polyhaven/` (gitignored). |
 | `voice/v6_speech.py` | Japanese speech through the local VOCALOID6 Hatsune Miku V6 model: one note per mora, accent from `teto_tts`. Needs the headless synth CLI (`V6_SYNTH`) and the installed licences; not redistributed. |
@@ -36,9 +39,15 @@ python engine/bridge/cli.py status        # with the page open in a browser
 python engine/bridge/cli.py describe
 python engine/bridge/cli.py snapshot shot.jpg 960
 python engine/bridge/cli.py perf
+node scripts/story-check.mjs              # the story: compile, lint, fuzz, Runner / views / gestures self-checks
+python scripts/server.py --check          # the server's self-check (no Ollama, no voices)
+python engine/bridge/cli.py story.state   # the story on the open page; also story.log {since} play {path} stop new advance
+                                          # choose {index} fire {event,value} set {name,value} run {tag} say {text} reload
+                                          # save/load/remove {slot} slots replay {id} lint answer {text} (engine.commands())
 ```
 
-Verify visual changes through the bridge on the open page: `snapshot`, then `perf`. Don't run long headless runs
+Verify visual changes through the bridge on the open page: `snapshot`, then `perf` (`snapshot` is the canvas only: the
+story's dialogue box and menu are DOM, read them with `story.state` or `eval`). Don't run long headless runs
 of the full scene. After changing `scripts/server.py` or `engine/bridge/relay.py`, restart the server.
 
 ## Conventions

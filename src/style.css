@@ -32,3 +32,69 @@ button:hover,select:hover,.file:hover{border-color:#ffffff77}
 #chat{position:fixed;left:0;right:0;bottom:0;z-index:5;padding:12px;display:flex;justify-content:center;background:linear-gradient(transparent,#000a)}
 #chat form{display:flex;gap:6px;width:min(620px,100%)}
 #chat input{flex:1;background:#111d;color:#fff;border:1px solid #ffffff33;border-radius:8px;padding:10px 12px;font-size:15px}
+/* story: the dialogue box, choices, prompt, backlog and menu (src/story/DomView.js). The box sits above a fade overlay
+   so narration still reads on black; the menu covers the drawer. #chat steps aside while a scene is up. */
+body.story-scene #chat{display:none}
+#story{position:fixed;left:0;right:0;bottom:0;z-index:5;display:flex;flex-direction:column;align-items:center;gap:10px;padding:0 10px calc(12px + env(safe-area-inset-bottom));pointer-events:none}
+#story>*{pointer-events:auto}
+.story-box{position:relative;box-sizing:border-box;width:min(880px,100%);min-height:118px;padding:24px 20px 34px;background:#080b10e0;color:#fff;border:1px solid #ffffff2a;border-radius:12px;backdrop-filter:blur(6px);cursor:pointer;user-select:none}
+.story-name{position:absolute;left:16px;top:-15px;padding:3px 14px;border-radius:8px;background:#0b2226;border:1px solid #99ffdd66;color:#9fd;font-weight:600;font-size:14px}
+.story-name:empty{display:none}
+.story-box.player .story-name{color:#ffc38a;border-color:#ffc38a66;background:#2a1d0e}
+.story-text{font-size:19px;line-height:1.6;white-space:pre-wrap;word-break:keep-all;overflow-wrap:anywhere}
+.story-box.player .story-text{color:#ffe3c4}
+.story-box.narration .story-text{font-style:italic;color:#d8dde8}
+.story-box.whisper .story-text{font-size:16px;color:#e4ebf8;letter-spacing:.04em;opacity:.85}
+.story-sub{margin-top:6px;font-size:15px;line-height:1.5;color:#bfe2ff;word-break:keep-all;overflow-wrap:anywhere}
+.story-rest{visibility:hidden}
+.story-next{position:absolute;right:18px;bottom:30px;font-size:11px;color:#9fd;opacity:0}
+.story-box.done .story-next{opacity:1;animation:story-blink 1s steps(2) infinite}
+.story-choices:not(.hidden)~.story-box .story-next{display:none}
+@keyframes story-blink{50%{opacity:0}}
+.story-quick{position:absolute;right:8px;bottom:5px;display:flex;flex-wrap:wrap;justify-content:flex-end;gap:2px}
+.story-quick button{background:none;border:0;border-radius:6px;padding:3px 7px;font-size:12px;color:#ffffff80}
+.story-quick button:hover{color:#fff;background:#ffffff14}
+.story-quick button.on{color:#9fd;text-shadow:0 0 6px #99ffdd88}
+.story-choices{display:flex;flex-direction:column;gap:8px;width:min(560px,100%)}
+.story-choice{display:flex;align-items:center;gap:12px;width:100%;text-align:left;padding:12px 16px;font-size:16px;line-height:1.4;background:#080b10e0;border-radius:10px;backdrop-filter:blur(6px)}
+.story-choice:hover{border-color:#9fd;background:#0d1d24eb}
+.story-choice.picked{border-color:#9fd;background:#174050eb}
+.story-choice kbd{flex:none;min-width:20px;padding:1px 5px;border:1px solid #ffffff44;border-radius:5px;font:12px/1.4 system-ui,sans-serif;color:#9fd;text-align:center}
+.story-timer{height:4px;border-radius:2px;background:#9fd;transform-origin:left;animation:story-timer var(--t) linear forwards}
+@keyframes story-timer{to{transform:scaleX(0)}}
+body:has(#storyMenu:not(.hidden)) .story-timer,body:has(#storyLog:not(.hidden)) .story-timer{animation-play-state:paused} /* the choice waits behind them (index.js) */
+.story-overlay{position:fixed;inset:0;z-index:8;display:grid;place-items:center;box-sizing:border-box;padding:10px;background:#000a}
+.story-panel{box-sizing:border-box;width:min(880px,100%);max-height:100%;overflow-y:auto;background:#080b10f0;color:#fff;border:1px solid #ffffff2a;border-radius:12px;padding:12px 16px;backdrop-filter:blur(6px)}
+.story-tabs{display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin-bottom:12px;padding-bottom:10px;border-bottom:1px solid #ffffff1a}
+.story-tabs .sp{flex:1}
+.story-tabs b{color:#9fd;font-size:14px}
+.story-tabs button.on{background:#2a5d8fdd;border-color:#8cf}
+.story-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px}
+.story-cell{position:relative}
+.story-slot{width:100%;display:flex;flex-direction:column;gap:3px;padding:6px;text-align:left}
+.story-slot:disabled{opacity:.4;cursor:default}
+.story-slot img,.story-thumb{width:100%;aspect-ratio:16/9;object-fit:cover;border-radius:6px;background:#ffffff0d}
+.story-slot b{font-size:13px;font-weight:600}
+.story-slot small{font-size:11px;color:#aab;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.story-del{position:absolute;right:4px;top:4px;padding:1px 8px;font-size:14px;line-height:1.4}
+.story-empty{margin:24px 0;text-align:center;color:#aab;font-size:13px}
+.story-settings{max-width:560px}
+.story-settings .slider{grid-template-columns:150px 1fr 48px}
+.story-settings .slider select{grid-column:span 2}
+.story-settings .slider input[type=checkbox]{justify-self:start;width:auto}
+.story-entry{padding:8px 0;border-bottom:1px solid #ffffff12}
+.story-entry b{font-size:12px;color:#9fd}
+.story-entry.player b,.story-entry.player p:not(.story-sub){color:#ffc38a}
+.story-entry.narration p{font-style:italic;color:#d8dde8}
+.story-entry p{margin:2px 0;font-size:15px;line-height:1.5;word-break:keep-all;overflow-wrap:anywhere}
+.story-entry .story-sub{font-size:13px;margin-top:0}
+.story-prompt{display:flex;flex-direction:column;gap:10px;width:min(460px,100%)}
+.story-prompt p{margin:0;font-size:16px;line-height:1.5}
+.story-prompt input{background:#111d;color:#fff;border:1px solid #ffffff33;border-radius:8px;padding:10px 12px;font-size:15px}
+.story-prompt button{align-self:flex-end}
+/* a spoken (or typed) answer to choices / #input: the chat bar comes back (over the #input prompt's backdrop, not over the
+   menu), the box moves up for it */
+body.story-listen #chat{display:flex!important}
+body.story-listen:has(#storyPrompt:not(.hidden)) #chat{z-index:9}
+body.story-listen #story{padding-bottom:76px}
+#storyStatus{margin:2px 0 6px;font-size:12px;color:#aab}

@@ -1,0 +1,77 @@
+<!doctype html><html lang="ko"><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/><meta name="theme-color" content="#080b10"/>
+<title>스토리 개발자 도구</title>
+<!-- Story dev tool: the ink editor (editor.js, left) beside live tabs that drive the open game page over the engine bridge (dev.js, right).
+     Served from the repo root by scripts/server.py: http://localhost:3210/tools/dev.html. The editor compiles in-page with
+     ../src/story/Script.js, which imports the bare name 'inkjs' (keep the version in step with index.html). -->
+<link rel="stylesheet" href="./dev.css"/><!-- editor.js links editor.css itself, after CodeMirror's, so its rules win -->
+<script type="importmap">{"imports":{
+"inkjs":"https://cdn.jsdelivr.net/npm/inkjs@2.3.2/dist/ink-full.mjs"
+}}</script></head><body>
+<header id="top">
+<span id="conn" class="dot wait"></span><b id="connLabel">연결 중…</b>
+<span id="mode" title="게임 모드">—</span><span id="knot" class="knot" title="지금 노트"></span>
+<span id="line" class="line" title="지금 대사"></span>
+<a href="/" target="_blank" rel="noopener" title="게임 페이지를 새 탭에서 연다">게임 열기</a>
+</header>
+<main>
+<section id="editor" aria-label="편집기"></section>
+<aside id="live" aria-label="실행 중인 게임">
+<nav id="tabs" role="tablist" title="Alt+1..6 탭 전환">
+<button role="tab" id="t-run" data-tab="run" aria-controls="tab-run">실행</button><button role="tab" id="t-vars" data-tab="vars" aria-controls="tab-vars">변수</button><button role="tab" id="t-trig" data-tab="trig" aria-controls="tab-trig">트리거</button><button role="tab" id="t-fx" data-tab="fx" aria-controls="tab-fx">연출</button><button role="tab" id="t-save" data-tab="save" aria-controls="tab-save">세이브</button><button role="tab" id="t-log" data-tab="log" aria-controls="tab-log">로그<span class="badge" hidden></span></button>
+</nav>
+<div id="offline" class="banner" hidden></div>
+
+<section class="tab" id="tab-run" role="tabpanel" aria-labelledby="t-run" hidden>
+<div class="row"><button id="advance" class="game" title="다음 대사 (F8)">다음</button><button id="stop" class="game" title="장면 중지 (Shift+F8)">중지</button><button id="newGame" class="game" title="진행을 버리고 맨 위 흐름부터">새 게임</button></div>
+<form id="playForm" class="row"><input id="playPath" list="knotList" placeholder="노트 또는 노트.스티치" autocomplete="off" spellcheck="false" required/><button class="game">여기서 재생</button></form>
+<datalist id="knotList"></datalist>
+<h3>지금 대사</h3><div id="curLine" class="card"></div>
+<form id="answerForm" class="row" hidden><input id="answerText" placeholder="#input 대답" autocomplete="off" required/><button class="game">대답</button></form>
+<h3>선택지 <small>1-9</small></h3><div id="curChoices" class="choices"></div>
+<div id="errors"></div>
+<h3>지난 대사 <small>클릭 = 다시 말하기</small></h3><ol id="backlog" class="backlog" reversed></ol>
+</section>
+
+<section class="tab" id="tab-vars" role="tabpanel" aria-labelledby="t-vars" hidden>
+<input id="varFilter" type="search" placeholder="변수 찾기" autocomplete="off"/>
+<p class="hint">Enter = 적용, Esc = 되돌리기. 숫자 변수는 숫자로, 리스트는 JSON으로.</p>
+<table id="varTable" class="grid"><thead><tr><th>변수</th><th>값</th></tr></thead><tbody></tbody></table>
+<h3>방문 횟수</h3>
+<table id="visitTable" class="grid"><thead><tr><th>노트</th><th class="num">방문</th><th></th></tr></thead><tbody></tbody></table>
+</section>
+
+<section class="tab" id="tab-trig" role="tabpanel" aria-labelledby="t-trig" hidden>
+<form id="fireForm" class="row"><input id="fireEvent" list="eventList" placeholder="이벤트 (touch.headpat)" autocomplete="off" spellcheck="false" required/><input id="fireValue" placeholder="값" size="6" autocomplete="off"/><button class="game">발사</button></form>
+<datalist id="eventList"></datalist>
+<div id="eventChips" class="chips"></div>
+<h3>트리거 노트 <small>초록 = 지금 받을 수 있음</small></h3>
+<table id="trigTable" class="grid"><thead><tr><th>노트</th><th>이벤트</th><th>조건</th><th>마지막</th><th></th></tr></thead><tbody></tbody></table>
+</section>
+
+<section class="tab" id="tab-fx" role="tabpanel" aria-labelledby="t-fx" hidden>
+<form id="runForm" class="row"><input id="runTag" list="tagList" placeholder="expr:shy hold" autocomplete="off" spellcheck="false" required/><button class="game">실행</button></form>
+<datalist id="tagList"></datalist><p id="runDoc" class="hint"></p>
+<div id="quick"></div>
+<h3>말하기</h3>
+<form id="sayForm" class="row"><input id="sayText" placeholder="こんにちは" autocomplete="off" required/><select id="sayVoice" title="목소리"><option value="">기본 목소리</option><option value="miku">miku</option><option value="teto">teto</option></select><select id="sayStyle" title="말투"><option value="">보통</option><option value="whisper">속삭임</option></select><button class="game">말하기</button></form>
+<h3>연출 태그 <small>클릭 = 입력칸에 넣기</small></h3>
+<table id="cmdTable" class="grid"><tbody></tbody></table>
+</section>
+
+<section class="tab" id="tab-save" role="tabpanel" aria-labelledby="t-save" hidden>
+<form id="saveForm" class="row"><input id="saveSlot" placeholder="슬롯 이름 (영문, 숫자, _ -)" maxlength="32" autocomplete="off" spellcheck="false" required/><button class="game">지금 저장</button></form>
+<div class="row"><button id="slotsRefresh" type="button">새로고침</button><button id="importBtn" type="button" title="내보낸 세이브 JSON을 서버 슬롯으로">JSON 가져오기</button><input id="importFile" type="file" accept=".json,application/json" multiple hidden/></div>
+<table id="slotTable" class="grid"><tbody></tbody></table>
+<h3>추억</h3><div id="memList"></div>
+</section>
+
+<section class="tab" id="tab-log" role="tabpanel" aria-labelledby="t-log" hidden>
+<div class="row"><input id="logFilter" type="search" placeholder="로그 찾기" autocomplete="off"/><button id="logClear" type="button">지우기</button></div>
+<div id="logTypes" class="chips" aria-label="종류 필터"></div>
+<div id="logList" class="log"></div>
+</section>
+<div id="msg" role="status" aria-live="polite"></div>
+</aside>
+</main>
+<script type="module" src="./dev.js"></script>
+</body></html>

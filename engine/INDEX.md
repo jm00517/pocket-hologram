@@ -77,6 +77,14 @@ python engine/bridge/cli.py call crossing.moveTo '{"x":2,"z":-3}'
 python engine/bridge/cli.py eval "return engine.scene.children.length"
 ```
 
+The app adds its own commands with `engine.command(name, doc, args, run)` (owner `app`: listed by `describe`,
+callable the same way, kept across map switches; this repo's story layer registers `story.*`):
+
+```sh
+python engine/bridge/cli.py story.state
+python engine/bridge/cli.py story.fire '{"event":"touch.headpat"}'
+```
+
 Plain HTTP works too: `POST /api/engine {"cmd": "...", "args": {...}}` returns `{"ok", "result" | "error"}`.
 Commands go to whichever open tab polls first, so keep one tab open.
 

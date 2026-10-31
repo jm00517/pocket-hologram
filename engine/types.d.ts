@@ -59,8 +59,11 @@ export interface Engine {
   toWorld(p: [number, number, number]): THREE.Vector3;
   toMetres(v: THREE.Vector3): [number, number, number];
 
-  /** every command available now (core + the active map's), for agents */
+  /** every command available now (core + the app's + the active map's), for agents */
   commands(): CommandInfo[];
+  /** Register an app command (owner 'app'): listed by commands()/describe, callable over the bridge, survives map
+   *  switches. Re-registering a name replaces it; an engine core name throws. */
+  command(name: string, doc: string, args: Record<string, string> | null, run: (args: any) => unknown): Engine;
   call(name: string, args?: object): Promise<unknown>;
   describe(): Description;
   state(): State;
@@ -96,6 +99,7 @@ export interface PerfStats { frames: number; fps: number; width: number; height:
 // Core: describe, state, load{state}, map{id}, get{ids?}, set{values}, snapshot{type,quality,width}, perf,
 //       camera{position,target,fov | mode:'rig'}, eval{code}
 // Map commands are namespaced: '<mapId>.<name>' (e.g. crossing.moveTo{x,z}), present only while that map is active.
+// App commands come from engine.command(name, doc, args, run) (this app: story.* in src/story/) and stay registered.
 // ---------------------------------------------------------------------------------------------------------
 export interface CommandInfo { name: string; doc: string; args: Record<string, string> }
 export interface MapCommand { doc: string; args?: Record<string, string>; run(args: any): unknown }

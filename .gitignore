@@ -8,3 +8,5 @@ assets/*
 !assets/models/
 .tools/
 __pycache__/
+# the player's save slots (scripts/server.py /api/save)
+saves/

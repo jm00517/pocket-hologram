@@ -1,0 +1,112 @@
+/* Story dev tool shell and live tabs (tools/dev.html). Same dark translucent look as the game's drawer (src/style.css);
+   plain element rules on purpose, so tools/editor.css can override them inside #editor. */
+:root{color-scheme:dark;--bg:#080b10;--panel:#0c1017;--card:#ffffff08;--line:#ffffff1a;--edge:#ffffff33;--fg:#e8edf3;--mute:#8a93a3;
+  --acc:#9fd;--blue:#8cf;--num:#bfe2ff;--warn:#fc6;--bad:#f88;--ok:#6d9;--her:#ffd6ec;--you:#bfe2ff;--mono:ui-monospace,Consolas,monospace}
+*{box-sizing:border-box}
+html,body{margin:0;height:100%;background:var(--bg);color:var(--fg);font:13px/1.45 system-ui,sans-serif}
+body{display:flex;flex-direction:column}
+[hidden]{display:none!important}
+button,select,input{background:#111d;color:#fff;border:1px solid var(--edge);border-radius:8px;padding:6px 10px;font:inherit}
+button{cursor:pointer;white-space:nowrap}
+button:hover,select:hover{border-color:#ffffff77}
+input[type=checkbox]{width:16px;height:16px;padding:0;accent-color:var(--blue)}
+:focus-visible{outline:2px solid var(--blue);outline-offset:1px}
+a{color:var(--blue)}
+h3{margin:14px 0 6px;font-size:12px;font-weight:600;color:var(--acc)}
+h3 small,small{color:var(--mute);font-weight:400}
+kbd{font:11px var(--mono);border:1px solid var(--edge);border-radius:4px;padding:0 4px;color:var(--mute)}
+.muted{color:var(--mute)}
+.bad{color:var(--bad)}
+.mono{font-family:var(--mono);font-size:12px}
+.hint{margin:6px 0;color:var(--mute);font-size:12px}
+.pad{padding:16px}
+
+/* header: connection, mode, where the story is */
+#top{display:flex;align-items:center;gap:10px;padding:6px 12px;border-bottom:1px solid var(--line);background:#0b0f16;white-space:nowrap;min-width:0}
+#top .line{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;color:var(--mute)}
+#top .knot{font-family:var(--mono);color:var(--num)}
+.dot{display:inline-block;width:9px;height:9px;border-radius:50%;background:var(--mute);flex:none;vertical-align:middle;margin-right:6px}
+.dot.on{background:var(--ok);box-shadow:0 0 6px var(--ok)}
+.dot.off,.dot.err{background:var(--bad)}
+.dot.slow{background:var(--warn)}
+.dot.idle,.dot.server,.dot.wait{background:#556}
+#top .dot{margin-right:0}
+#mode{padding:2px 8px;border-radius:999px;border:1px solid var(--edge);font-size:12px}
+#mode[data-m=scene]{border-color:var(--blue);color:var(--blue)}
+#mode[data-m=choice],#mode[data-m=input]{border-color:var(--warn);color:var(--warn)}
+#mode[data-m=replay]{border-color:var(--acc);color:var(--acc)}
+
+/* layout: editor | live panel; stacked on narrow screens */
+main{flex:1;min-height:0;display:flex}
+#editor{flex:1;min-width:0;min-height:0;display:flex;flex-direction:column;overflow:hidden}
+#live{width:min(480px,42vw);flex:none;display:flex;flex-direction:column;min-height:0;border-left:1px solid var(--line);background:var(--panel)}
+@media (max-width:900px){main{flex-direction:column}#editor{min-height:55vh}#live{width:auto;height:45vh;border-left:0;border-top:1px solid var(--line)}}
+#tabs{display:flex;border-bottom:1px solid var(--line);flex:none}
+#tabs button{flex:1;border:0;border-bottom:2px solid transparent;border-radius:0;background:none;padding:9px 4px;color:var(--mute)}
+#tabs button[aria-selected=true]{color:var(--acc);border-bottom-color:var(--acc)}
+#tabs .badge{margin-left:4px;padding:0 5px;border-radius:999px;background:var(--bad);color:#000;font-size:11px}
+.tab{flex:1;min-height:0;overflow:auto;padding:10px 12px}
+.banner{flex:none;margin:8px 12px 0;padding:8px 10px;border-radius:8px;border:1px solid #f886;background:#ff88881a;color:#fdd;font-size:12px}
+body.offline .tab{opacity:.6}
+body.offline button.game{opacity:.5}
+#msg{flex:none;min-height:28px;padding:5px 12px;border-top:1px solid var(--line);font-size:12px;color:var(--acc);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#msg.bad{color:var(--bad)}
+
+/* building blocks */
+.row{display:flex;gap:6px;margin:0 0 8px;flex-wrap:wrap}
+.row input:not([type=checkbox]){flex:1;min-width:120px}
+.row #fireValue{flex:0 0 64px;min-width:0}
+.tab>input[type=search]{width:100%;margin-bottom:6px}
+.chips{display:flex;flex-wrap:wrap;gap:4px;margin:6px 0}
+.chip{padding:3px 8px;font-size:12px;border-radius:999px}
+.chip[aria-pressed=false]{opacity:.4;text-decoration:line-through}
+button.small{padding:3px 8px;font-size:12px}
+button.bad{border-color:#f886}
+.card{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:10px}
+table.grid{width:100%;border-collapse:collapse}
+.grid th,.grid td{text-align:left;padding:4px 6px;border-bottom:1px solid var(--line);vertical-align:top}
+.grid thead th{color:var(--mute);font-weight:500;font-size:12px}
+.grid tbody th{font:12px var(--mono);font-weight:400;color:var(--num);width:40%;word-break:break-all}
+.grid td input:not([type=checkbox]){width:100%;padding:4px 6px;font:12px var(--mono)}
+.grid .num{text-align:right;font-variant-numeric:tabular-nums;color:var(--num);white-space:nowrap}
+.grid td.acts{text-align:right;white-space:nowrap}
+.grid td.acts button{margin-left:4px}
+.grid .cond{color:var(--mute);font-size:12px}
+.grid tr.ready td:first-child{color:var(--ok)}
+.thumb{display:block;width:72px;height:40px;object-fit:cover;border-radius:4px;background:#ffffff0d}
+
+/* a Line: name plate, text, subtitles, meta + its directions */
+.ln b{color:var(--her);margin-right:6px}
+.ln.player b,.ln.player .tx{color:var(--you)}
+.ln.narration .tx{font-style:italic;color:#ccd}
+.ln .sub{color:var(--mute);font-size:12px;margin-top:2px}
+.ln .meta{display:flex;flex-wrap:wrap;gap:4px 8px;margin-top:6px;color:var(--mute);font-size:11px;align-items:center}
+.tag{font:11px var(--mono);color:var(--acc);background:#9fd1;border:1px solid #9fd3;border-radius:4px;padding:1px 5px}
+button.tag:hover{border-color:var(--acc)}
+.choices{display:flex;flex-direction:column;gap:6px}
+.choice{display:flex;align-items:center;gap:8px;text-align:left;flex-wrap:wrap;white-space:normal}
+.choice .tag{margin-left:auto}
+.choice .tag~.tag{margin-left:0}
+.errs{margin:0;padding-left:18px;color:var(--bad);font:12px var(--mono)}
+.backlog{margin:0;padding-left:26px;color:var(--mute)}
+.backlog li{padding:5px 4px;border-bottom:1px solid var(--line)}
+.backlog li.voiced{cursor:pointer}
+.backlog li.voiced:hover{background:var(--card)}
+.mem{display:flex;gap:10px;align-items:center;padding:6px 0;border-bottom:1px solid var(--line)}
+.mem>div{flex:1;min-width:0}
+
+/* log */
+.log{font:12px/1.5 var(--mono)}
+.log .ev summary{display:flex;gap:8px;cursor:pointer;list-style:none;padding:1px 0;border-bottom:1px solid #ffffff0a}
+.log .ev summary::-webkit-details-marker{display:none}
+.log .ev summary span{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.log .ev[open] summary span{white-space:normal}
+.log time{color:#667;flex:none}
+.log i{flex:0 0 64px;font-style:normal;color:var(--mute)}
+.log pre{margin:2px 0 6px 20px;padding:6px;background:var(--card);border-radius:6px;white-space:pre-wrap;word-break:break-all;color:var(--num)}
+.log .line i,.chip.line{color:var(--her)}
+.log .chose i,.chip.chose{color:var(--you)}
+.log .trigger i,.log .event i,.chip.trigger,.chip.event{color:var(--warn)}
+.log .direction i,.chip.direction{color:var(--acc)}
+.log .error,.log .error i,.chip.error{color:var(--bad)}
+.log .sep{color:var(--mute);text-align:center;padding:4px 0}

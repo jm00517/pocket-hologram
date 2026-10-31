@@ -187,6 +187,13 @@ export function createEngine({ canvas, far = 30000, maxPixelRatio = 2 } = {}) {
 
     // --- command surface (what the bridge and agents call) ---
     commands: () => [...commands.values()].map(({ name, doc, args }) => ({ name, doc, args })),
+    /** The app's own command (e.g. story.*): listed and callable like the rest, kept across map switches. */
+    command(name, doc, args, run) {
+      if (typeof run !== 'function') throw new Error(`command ${name}: needs run(args)`);
+      if (commands.get(name)?.owner === 'engine') throw new Error(`command ${name} is the engine's`);
+      commands.set(name, { name, doc, args: args ?? {}, run, owner: 'app' });
+      return engine;
+    },
     async call(name, args = {}) {
       const c = commands.get(name);
       if (!c) throw new Error(`unknown command ${name}; commands: ${[...commands.keys()].join(', ')}`);

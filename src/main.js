@@ -17,6 +17,7 @@ import { Character, BUILTIN_MOTIONS, IDLE_POSE, DEFAULT_MODEL } from './characte
 import { Life } from './character/Life.js';
 import { Touch } from './character/Touch.js';
 import { Follow } from './character/Follow.js';
+import { mountStory } from './story/index.js';
 
 const $=s=>document.querySelector(s),canvas=$('#scene'),video=$('#camera'),status=$('#status'),debugPanel=$('#debugPanel'),calPanel=$('#calibration'),motionSel=$('#motion'),modelSel=$('#modelSel');
 const calibration=new Calibration();
@@ -90,7 +91,7 @@ function layout(){
   character?.resetPhysics();
 }
 
-function clearModels(){blob.visible=false;if(current){scene.remove(current);current=null}if(character){stage.remove(character.mesh);character.dispose();character=null}}
+function clearModels(){blob.visible=false;if(current){scene.remove(current);current=null}if(character){character.follow?.arrive();stage.remove(character.mesh);character.dispose();character=null}} // arrive: a scene awaiting her scripted walk goes on
 
 let loadSeq=0; // the latest pick wins: an older, slower load must not replace it when it finally arrives
 async function loadCharacter(url,manager){
@@ -98,9 +99,10 @@ async function loadCharacter(url,manager){
   const my=++loadSeq,c=new Character();const mesh=await c.load(url,manager);
   if(my!==loadSeq){c.dispose();return}
   clearModels();character=c;window.character=c; // console / future LLM hook
-  const aside=t=>window.chat?.say(t,{interrupt:false}); // her own lines never cut off one she's saying
-  c.life=new Life(c,{say:aside,P:lifeP});
-  c.touch=new Touch(c,{say:aside,P:lifeP,slap:p=>slap(p)});
+  const aside=t=>story?.busy?undefined:window.chat?.say(t,{interrupt:false}); // her own lines never cut off one she's saying, nor a scene
+  const event=(n,v)=>story?.fire(n,v)??false; // the story may take the moment (src/story/index.js)
+  c.life=new Life(c,{say:aside,P:lifeP,event,scene:()=>!!story?.busy});
+  c.touch=new Touch(c,{say:aside,P:lifeP,slap:p=>slap(p),event});
   c.follow=new Follow(c);
   c.bones['頭'].add(voice3d);
   const h=new THREE.Box3().setFromObject(mesh).getSize(new THREE.Vector3()).y;
@@ -214,7 +216,10 @@ const reverb=(()=>{const a=engine.listener.context,split=a.createGain(),merge=a.
   engine.params.define([{id:'audio.reverb',label:'목소리 울림',doc:"How much of the room's reverb is on her voice (each map has its own size and amount; 1 = as authored, 0 = dry).",min:0,max:3,step:.05,get:()=>P.amount,set:v=>{P.amount=v;set()}}]);
   return {set}})();
 engine.on('map',()=>voice3d.setRefDistance(2.5*engine.units)); // full volume within 2.5 m (the window view sits ~4 m off)
-window.chat=mountChatBar(()=>character?.behavior,$('#charRows'),{route:el=>{voice3d.source?.disconnect();voice3d.setMediaElementSource(el);engine.listener.context.resume()}});
+// the dating-sim layer (src/story/, story/*.ink): mounted below, once the VR controllers exist
+let story=null;
+window.chat=mountChatBar(()=>character?.behavior,$('#charRows'),{route:el=>{voice3d.source?.disconnect();voice3d.setMediaElementSource(el);engine.listener.context.resume()},
+  context:()=>story?.runner.persona()??'',onReply:r=>story?.fire('chat',r.feeling)});
 
 function resize(){engine.resize();layout()}addEventListener('resize',resize);addEventListener('fullscreenchange',resize);resize();
 // Local models live in assets/ (gitignored, MMD licenses forbid redistribution). The first one that exists
@@ -251,9 +256,12 @@ const slap=(()=>{const s=new THREE.PositionalAudio(engine.listener),a=engine.lis
   s.setBuffer(b);s.setVolume(1.4);engine.rig.add(s);
   return p=>{s.setRefDistance(1.5*engine.units);s.position.copy(engine.rig.worldToLocal(p.clone()));if(s.isPlaying)s.stop();s.play()}})();
 // talking in VR: hold a trigger (or, hands tracked, a pinch) to speak to her; a buzz says it's listening
+// (unless the trigger hit a story panel: XRView takes that press)
 for(const i of [0,1]){const c=renderer.xr.getController(i);
-  c.addEventListener('selectstart',()=>{window.chat?.listenStart();grips[i].userData.src?.gamepad?.hapticActuators?.[0]?.pulse?.(0.3,60)});
-  c.addEventListener('selectend',()=>window.chat?.listenStop())}
+  c.addEventListener('selectstart',()=>{if(story?.xrSelect(i))return;window.chat?.listenStart();grips[i].userData.src?.gamepad?.hapticActuators?.[0]?.pulse?.(0.3,60)});
+  c.addEventListener('selectend',()=>{if(story?.xrSelectEnd(i))return;window.chat?.listenStop()})}
+story=window.story=mountStory({engine,chat:window.chat,getCharacter:()=>character,
+  controllers:()=>[0,1].map(i=>({ray:renderer.xr.getController(i),grip:grips[i],src:grips[i].userData.src})),tips:()=>[tipOf(0),tipOf(1)]});
 const mapHands=[];
 // VR locomotion on the sticks: left glides where you look (1.5 m/s), right snaps you 30° around your head.
 // It moves the rig, so walking through a map's doors (portals) works the same as stepping through in the room;
@@ -290,7 +298,7 @@ engine.on('beforeFrame',dt=>{
       interests:(inst?.interests?.()??[]).map(i=>({p:engine.toWorld(i.p),label:i.label}))});
     character.applyWorld({wind:{dir:engine.wind.uniforms.uWindDir.value,amp:engine.wind.uniforms.uWindAmp.value,gain:lifeP.wind},hands:xr?grips.filter(g=>g.userData.src).map(g=>g.getWorldPosition(new THREE.Vector3())):[],radius:.05*engine.units});
     character.touch.update(dt,{hands:xr?grips.map((g,i)=>g.userData.src&&{p:g.getWorldPosition(new THREE.Vector3()),src:g.userData.src,tip:tipOf(i)}).filter(Boolean):[],viewer,U:engine.units});
-    character.follow.update(dt,{viewer:stage.worldToLocal(viewer.clone()).divideScalar(engine.units),roam:inst?.roam??null,on:!!xr&&!!lifeP.follow,U:engine.units});
+    character.follow.update(dt,{viewer:stage.worldToLocal(viewer.clone()).divideScalar(engine.units),roam:inst?.roam??null,on:!!xr&&(story?.followOverride??(!!lifeP.follow&&!story?.busy)),U:engine.units}); // #follow:on/off rules a scene; else not during one
     character.update(dt);const c=character.bones['センター'].getWorldPosition(blob.position);stage.worldToLocal(c);c.y=.01}
   debugPanel.textContent=`filtered eye (m)
 x ${eye.x.toFixed(3)}
@@ -302,7 +310,7 @@ HFOV ${calibration.data.cameraHFovDeg.toFixed(1)}°
 K ${K.toFixed(1)}`;
 });
 engine.start();
-addEventListener('pagehide',()=>character?.life.save());
+addEventListener('pagehide',()=>{character?.life.save();story?.save()});
 
 // One clock for every world: the real time of day (this browser's clock, latitude time.lat) drives the sky maps'
 // sun (`<map>.elev`) and the crossing's weather (day / sunset / night). Moving a sun by hand turns it off.

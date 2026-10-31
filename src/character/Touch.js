@@ -7,15 +7,19 @@
 // - a raised hand held still in front of her is a high five on offer: she raises hers, and a slap lands it
 //   (a clap at the palms, a hard buzz, 'やったー');
 // - a hand resting at hers is holding hands: she looks down at it and goes shy.
-// Bare hands (Quest hand tracking) poke with the index fingertip. Distances are in metres; U = world units per metre.
+// Bare hands (Quest hand tracking) poke with the index fingertip. Each touch is also told to the story (event): when
+// a scene takes it, her own line is left out; the face and the body still answer. Distances are in metres; U = world
+// units per metre.
 import * as THREE from 'three';
 
 const pick = (a) => a[Math.floor(Math.random() * a.length)];
 const v = new THREE.Vector3(), up = new THREE.Vector3(0, 1, 0);
 
 export class Touch {
-  constructor(character, { say, P, slap }) {
-    this.c = character; this.say = say; this.P = P; this.slap = slap;
+  /** event(name, value) -> true when the story took it: 'touch.headpat' 'touch.poke' (-1 her left cheek, 1 her right)
+   *  'touch.wave' 'touch.highfive' 'touch.hand' */
+  constructor(character, { say, P, slap, event = () => false }) {
+    this.c = character; this.say = say; this.P = P; this.slap = slap; this.event = event;
     this.offer = 0; this.up = 0; this.fiveCool = 0; this.hold = 0; this.holdCool = 0;
     this.pat = 0; this.patSaid = false; this.buzz = 0; this.pokeCool = 0; this.waveCool = 0;
     this.prev = []; this.wave = [];
@@ -44,7 +48,8 @@ export class Touch {
         const cheek = head.clone().addScaledVector(up, -0.03 * U).addScaledVector(fwd, 0.07 * U).addScaledVector(side, s * 0.05 * U);
         if (this.pokeCool <= 0 && (h.tip ?? h.p).distanceTo(cheek) < (h.tip ? 0.035 : 0.05) * U) {
           this.pokeCool = 4; b.express('surprised', { len: 0.5 });
-          setTimeout(() => { b.express('pout', { len: 2.2 }); if (Math.random() < this.P.chatter * 1.6) this.say(pick(['むぅ', 'もー、なにするの'])); }, 450);
+          const told = this.event('touch.poke', -s); // side points to her left
+          setTimeout(() => { b.express('pout', { len: 2.2 }); if (!told && Math.random() < this.P.chatter * 1.6) this.say(pick(['むぅ', 'もー、なにするの'])); }, 450);
           h.src?.gamepad?.hapticActuators?.[0]?.pulse?.(0.5, 40);
         }
       }
@@ -59,7 +64,8 @@ export class Touch {
       w.flips = w.flips.filter((t) => c.t - t < 1.5);
       if (w.flips.length >= 3 && this.waveCool <= 0) {
         this.waveCool = 8; w.flips = [];
-        life?.notice({ p: h.p.clone(), gesture: pick(['wave', 'wave2', 'hi']), line: pick(['やっほー！', 'はーい！']), hold: 2 });
+        const told = this.event('touch.wave');
+        life?.notice({ p: h.p.clone(), gesture: pick(['wave', 'wave2', 'hi']), line: told ? null : pick(['やっほー！', 'はーい！']), hold: 2 });
       }
     });
 
@@ -72,11 +78,14 @@ export class Touch {
     c.lean.pitch += ((on ? 0.1 : 0) - c.lean.pitch) * k;
     if (on) {
       if (life) { life.mode = 'you'; life.left = Math.max(life.left, 1); }
-      if (this.pat > 7) { if (b.expr?.name !== 'shy') { b.express('shy', { len: 3 }); if (!b.speech) this.say(pick(['も、もう…', 'はずかしいよ…'])); } }
-      else if (b.expr?.name !== 'happy') b.express('happy', { len: 2 });
-      if (!this.patSaid && this.pat > 1.5) { this.patSaid = true; if (!b.speech && Math.random() < Math.max(this.P.chatter, 0.4)) this.say(pick(['えへへ…', 'ふふっ'])); }
+      if (this.patTold === undefined && this.pat > 0.6) this.patTold = !!this.event('touch.headpat'); // once per pat, once it's clearly one
+      const quiet = this.patTold === true || !!b.speech;
+      const mine = this.patTold !== true || !b.expr; // the scene's own #expr shows; her happy face comes back once it fades
+      if (this.pat > 7) { if (mine && b.expr?.name !== 'shy') { b.express('shy', { len: 3 }); if (!quiet) this.say(pick(['も、もう…', 'はずかしいよ…'])); } }
+      else if (mine && b.expr?.name !== 'happy') b.express('happy', { len: 2 });
+      if (!this.patSaid && this.pat > 1.5) { this.patSaid = true; if (!quiet && Math.random() < Math.max(this.P.chatter, 0.4)) this.say(pick(['えへへ…', 'ふふっ'])); }
       if ((this.buzz -= dt) <= 0) { this.buzz = 0.35; this.patHand?.src?.gamepad?.hapticActuators?.[0]?.pulse?.(0.15, 25); }
-    } else if (this.pat === 0) this.patSaid = false;
+    } else if (this.pat === 0) { this.patSaid = false; this.patTold = undefined; }
   }
 
   // high five and holding hands, against her wrists
@@ -97,7 +106,7 @@ export class Touch {
           this.slap?.(w.clone().lerp(h.p, 0.5));
           h.src?.gamepad?.hapticActuators?.[0]?.pulse?.(1, 90);
           b.express('happy', { len: 2.5 });
-          if (!b.speech) this.say(pick(['やったー！', 'いぇーい！', 'ナイス！']));
+          if (!this.event('touch.highfive') && !b.speech) this.say(pick(['やったー！', 'いぇーい！', 'ナイス！']));
         } else if (d < 0.1 && vel < 0.15) holding = { w, h };
       }
     });
@@ -109,8 +118,9 @@ export class Touch {
     this.hold = holding ? this.hold + dt : 0;
     if (holding && this.hold > 1 && this.holdCool <= 0) {
       this.holdCool = 15;
-      c.life?.notice({ p: holding.w.clone(), line: pick(['て、手…？', 'えへへ、あったかい']), hold: 3 });
-      b.express('shy', { len: 3.5 });
+      b.express('shy', { len: 3.5 }); // before the event: a scene's #expr ... hold then stays
+      const told = this.event('touch.hand');
+      c.life?.notice({ p: holding.w.clone(), line: told ? null : pick(['て、手…？', 'えへへ、あったかい']), hold: 3 });
     }
     if (holding && (this.buzzHold = (this.buzzHold ?? 0) - dt) <= 0) { this.buzzHold = 0.8; holding.h.src?.gamepad?.hapticActuators?.[0]?.pulse?.(0.08, 40); }
   }
