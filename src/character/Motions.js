@@ -7,6 +7,7 @@ const DIR = 'assets/motions/';
 // scripts/get-bandai.sh — Japanese performers, feminine/childish styles. Name → file under DIR.
 const BN = (f) => `bandai/vmd/dataset-${f}_001`;
 const DD = (f) => `mmd/deedee524/Idle Animations Pack - Copy/${f}`;
+const WL = (f) => 'rip/loops/WW_' + f, WA = (f) => 'rip/acts/WW_Cut' + f;
 const FILES = {
   bow: BN('1_bow_feminine'), hi: BN('1_bye_feminine'), byebye: BN('1_byebye_childish'), wave: BN('2_wave-right-hand_feminine'),
   wave2: BN('2_wave-both-hands_youthful'), raise: BN('2_raise-up-right-hand_youthful'), guide: BN('1_guide_feminine'),
@@ -26,19 +27,31 @@ const FILES = {
   // (hair physics explodes) do not
   g_cheer: 'gen/vmd/cheer_0', g_clap: 'gen/vmd/clap_0', g_shy: 'gen/vmd/shy_0', g_shystand: 'gen/vmd/a_person_stands_shyly_0051_0',
   g_nod: 'gen/vmd/listen_nod_0', g_nod2: 'gen/vmd/listen_nod_1', g_talk: 'gen/vmd/talk_both_0', g_talk2: 'gen/vmd/talk_both_1', g_talkr: 'gen/vmd/talk_right_0',
+  // Wuthering Waves rips (private study only: scripts/rip2vmd.sh -> assets/motions/rip, never committed). The clips that
+  // survived the retarget onto the Sour Miku, vetted on frame sheets: the sits, turns-away, weapon draws and the shots
+  // that walk off did not. loops/ = character stands (in place), acts/ = cutscene acting shots.
+  w_stand: WL('Chun_Base_Stand1'), w_stand2: WL('Jinxi_Stand2'), w_calm: WL('Chun_Stand1_Action01'), w_calm2: WL('Yangyang_Stand1_Action01'),
+  w_calm3: WL('Stand1_Action02'), w_calm4: WL('TaiDaoNv_Stand1_Action01'), w_calm5: WL('Fuludelisi_Stand1_Action01'),
+  w_face: WL('Chun_Stand1_Action02'), w_hair: WL('Chun_Stand2'), w_chest: WL('Sanhua_Stand1_Action02'), w_clasp: WL('Yangyang_Stand1_Action03'), w_wave: WL('Chun_Stand1_Action03'),
+  w_talk: WA('ChangLiB_Cam004'), w_talk2: WA('ChangLi_Cam012'), w_talk3: WA('ChangLi_Cam033'), w_talk4: WA('ChangLi_Cam035'), w_talk5: WA('ChangLi_Cam054'),
+  w_talk6: WA('ChangLi_Cam055'), w_talk7: WA('Rover_Cam015'), w_talk8: WA('Rover_Cam027'), w_talk9: WA('Rover_Cam054'), w_talk10: WA('Kati_Cam020'),
+  w_nod: WA('Suo_Cam001'), w_clasp2: WA('ChangLi_Cam013'), w_step: WA('Suo_Cam002'), w_lookup: WA('ChangLi_Cam015'), w_aside: WA('Suo_Cam004'),
+  w_hip: WA('ChangLiB_Cam007'), w_hip2: WA('ChangLi_Cam032'), w_wave2: WA('Fleur_Cam019'), w_wave3: WA('You_Cam013'), w_open: WA('Fleur_Cam026'),
+  w_spread: WA('Yang_Cam013'), w_turn: WA('Rover_Cam010'), w_turn2: WA('Rover_Cam016'), w_bow: WA('Suo_Cam015A'),
 };
 const fileOf = (name) => DIR + (FILES[name] ?? 'vmd/' + name).split('/').map(encodeURIComponent).join('/') + '.vmd';
 // Idle = MMD community motions (anime-girl stances); conversation gestures = Bandai. Missing files are
 // skipped, falling back to the code-built stand pose and procedural nods.
 export const LIBRARY = {
-  base: ['st_koa', 'st_rea', 'st_marieru', 'st_usa', 'st_ten'], // looping stands, rotated each cycle
-  idle: ['stretch', 'fixhair', 'tidy', 'shyidle', 'sway', 'confident', 'impatient'], // occasional fidgets
-  listening: ['respond', 'g_nod', 'g_nod2'],
-  thinking: ['sky', 'sniff'],
-  speaking: ['guide', 'guide2', 'guide3', 'g_talk', 'g_talk2', 'g_talkr'],
+  base: ['st_koa', 'st_rea', 'st_marieru', 'st_usa', 'st_ten', 'w_stand', 'w_stand2', 'w_calm', 'w_calm2', 'w_calm3', 'w_calm4', 'w_calm5'], // looping stands, rotated each cycle
+  idle: ['stretch', 'fixhair', 'tidy', 'shyidle', 'sway', 'confident', 'impatient', 'w_face', 'w_hair', 'w_chest', 'w_clasp', 'w_wave', 'w_hip', 'w_hip2'], // occasional fidgets
+  listening: ['respond', 'g_nod', 'g_nod2', 'w_nod', 'w_clasp2', 'w_step'],
+  thinking: ['sky', 'sniff', 'w_lookup', 'w_aside'],
+  speaking: ['guide', 'guide2', 'guide3', 'g_talk', 'g_talk2', 'g_talkr', 'w_talk', 'w_talk2', 'w_talk3', 'w_talk4', 'w_talk5', 'w_talk6', 'w_talk7', 'w_talk8', 'w_talk9', 'w_talk10'],
   reactions: {
     bow: 'bow', hi: 'hi', byebye: 'byebye', wave: 'wave', wave2: 'wave2', raise: 'raise', call: 'call', shybow: 'shybow',
     cheer: 'g_cheer', clap: 'g_clap', shy: 'g_shy', shystand: 'g_shystand',
+    wave3: 'w_wave2', wave4: 'w_wave3', open: 'w_open', spread: 'w_spread', turn: 'w_turn', turn2: 'w_turn2', bow2: 'w_bow', hip: 'w_hip', lookup: 'w_lookup',
   },
 };
 const FADE = 0.5;

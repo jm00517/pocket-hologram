@@ -6,6 +6,7 @@ cd "$(dirname "$0")/.."
 PMX="${1:-assets/sour/Sour式初音ミクVer.1.02/Black.pmx}"
 if [ ! -f .tools/fbx2vmd.mjs ]; then
   mkdir -p .tools && git clone -q --depth 1 https://github.com/AmyangXYZ/reze-rig.git .tools/reze-rig
+  python scripts/reze-rig-names.py .tools/reze-rig/lib/retarget.ts   # Biped-without-spaces upper arms, TEKKEN 8 names
   (cd .tools/reze-rig && npm install --no-audit --no-fund --silent &&
    npx esbuild scripts/fbx2vmd.ts --bundle --platform=node --format=esm --outfile=../fbx2vmd.mjs --log-level=warning)
 fi
