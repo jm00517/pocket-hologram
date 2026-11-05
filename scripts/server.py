@@ -11,8 +11,8 @@ save slots, and the engine's agent bridge under /api/engine (see engine/bridge/r
   the cache. Cache: assets/voicecache/<sha1 of JSON [voice, style|null, text]>.json, the reply itself. Every request
   reads it; "cache": true also writes it after synthesis (the dev tools bake a story's lines this way).
 /api/chat {"messages": [{"role": "user"|"assistant", "content"}...], "context"?: str <= 2000} -> {"reply", "feeling"}:
-  her answer from an LLM through OpenRouter (PH_LLM, default google/gemini-2.5-flash; the key is read from a file,
-  see KEY_FILES), as Miku, in short spoken Japanese, and how your last message made her feel (-2..2, JSON schema
+  her answer from an LLM through OpenRouter (PH_LLM, a comma list tried in order, default the free Gemma 4 then a cheap paid fallback; the key
+  is read from a file, see KEY_FILES), as Miku, in short spoken Japanese, and how your last message made her feel (-2..2, JSON schema
   output). context (the story's persona()) is appended to her persona. 503 without a key file or the network.
 /api/stt  raw audio (any format ffmpeg/PyAV reads; ?lang=ko) -> {"text", "lang"}: faster-whisper in voice/stt_worker.py.
 /api/story              GET -> {"files": [{"name": "ch1/intro.ink", "size", "mtime": ms}]}   (story/**/*.ink)
@@ -71,7 +71,9 @@ def tts_key(voice, style, text):
 
 
 # --- her side of a conversation: an LLM through OpenRouter ----------------------------------------------------
-LLM = os.environ.get('PH_LLM', 'google/gemini-2.5-flash')
+# PH_LLM: models in order of preference, OpenRouter falls through on an error (the free pool is often rate-limited
+# upstream): free Gemma 4 (gemma3:4b's class), the bigger free one, then a cheap paid one; the key's budget caps the cost
+LLM = os.environ.get('PH_LLM', 'google/gemma-4-26b-a4b-it:free,google/gemma-4-31b-it:free,google/gemini-2.5-flash-lite').split(',')
 # the API key lives in a file outside git (never read it by hand, never commit it): PH_OPENROUTER_KEY names the file,
 # else orouter_secret.txt here or hanja-lens's copy next door
 KEY_FILES = [Path(p) for p in [os.environ.get('PH_OPENROUTER_KEY')] if p] + \
@@ -119,7 +121,7 @@ def chat(messages, context=''):
     system = PERSONA + ('\n' + context[:2000] if context else '')
     msgs = [{'role': 'system', 'content': system}] + [{'role': m['role'], 'content': str(m['content'])[:300]}
                                                       for m in messages[-12:] if m.get('role') in ('user', 'assistant')]
-    body = json.dumps({'model': LLM, 'messages': msgs, 'temperature': 0.8, 'max_tokens': 120,  # the JSON wrapper costs ~20 tokens
+    body = json.dumps({'model': LLM[0], 'models': LLM, 'messages': msgs, 'temperature': 0.8, 'max_tokens': 120,  # the JSON wrapper costs ~20 tokens
                        'response_format': {'type': 'json_schema', 'json_schema': {'name': 'answer', 'strict': True, 'schema': ANSWER}}}).encode()
     r = urllib.request.urlopen(urllib.request.Request('https://openrouter.ai/api/v1/chat/completions', body,
                                                       {'Content-Type': 'application/json', 'Authorization': 'Bearer ' + api_key()}), timeout=120)
