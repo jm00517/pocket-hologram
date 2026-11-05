@@ -10,3 +10,5 @@ assets/*
 __pycache__/
 # the player's save slots (scripts/server.py /api/save)
 saves/
+# the OpenRouter API key (scripts/server.py reads it; never commit it)
+orouter_secret.txt

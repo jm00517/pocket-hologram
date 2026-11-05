@@ -2,7 +2,7 @@
 save slots, and the engine's agent bridge under /api/engine (see engine/bridge/relay.py, engine/bridge/cli.py).
 
     python scripts/server.py [port]     # http://localhost:3210
-    python scripts/server.py --check    # self-check of the reply parser and the path rules (no Ollama, no voices)
+    python scripts/server.py --check    # self-check of the reply parser and the path rules (no LLM, no voices)
 
 /api/tts  {"text": "こんにちは", "voice"?: "miku"|"teto", "style"?: "whisper", "cache"?: bool}
           -> {"audio": base64 WAV, "marks": [{"v": "a", "t": 0.12}, ...], "voice", "cached"?: true}
@@ -11,9 +11,9 @@ save slots, and the engine's agent bridge under /api/engine (see engine/bridge/r
   the cache. Cache: assets/voicecache/<sha1 of JSON [voice, style|null, text]>.json, the reply itself. Every request
   reads it; "cache": true also writes it after synthesis (the dev tools bake a story's lines this way).
 /api/chat {"messages": [{"role": "user"|"assistant", "content"}...], "context"?: str <= 2000} -> {"reply", "feeling"}:
-  her answer from a local LLM through Ollama (PH_LLM, default gemma3:4b), as Miku, in short spoken Japanese, and how
-  your last message made her feel (-2..2, Ollama structured output). context (the story's persona()) is appended to
-  her persona. 503 without Ollama.
+  her answer from an LLM through OpenRouter (PH_LLM, default google/gemini-2.5-flash; the key is read from a file,
+  see KEY_FILES), as Miku, in short spoken Japanese, and how your last message made her feel (-2..2, JSON schema
+  output). context (the story's persona()) is appended to her persona. 503 without a key file or the network.
 /api/stt  raw audio (any format ffmpeg/PyAV reads; ?lang=ko) -> {"text", "lang"}: faster-whisper in voice/stt_worker.py.
 /api/story              GET -> {"files": [{"name": "ch1/intro.ink", "size", "mtime": ms}]}   (story/**/*.ink)
 /api/story/<name>.ink   PUT (body: UTF-8 text) -> {"ok", "name", "size"}. name: [\\w-]+ segments joined by '/'.
@@ -70,14 +70,28 @@ def tts_key(voice, style, text):
     return hashlib.sha1(json.dumps([voice, style, text], ensure_ascii=False).encode()).hexdigest()
 
 
-# --- her side of a conversation: a local LLM through Ollama -------------------------------------------------
-LLM = os.environ.get('PH_LLM', 'gemma3:4b')
+# --- her side of a conversation: an LLM through OpenRouter ----------------------------------------------------
+LLM = os.environ.get('PH_LLM', 'google/gemini-2.5-flash')
+# the API key lives in a file outside git (never read it by hand, never commit it): PH_OPENROUTER_KEY names the file,
+# else orouter_secret.txt here or hanja-lens's copy next door
+KEY_FILES = [Path(p) for p in [os.environ.get('PH_OPENROUTER_KEY')] if p] + \
+            [ROOT / 'orouter_secret.txt', ROOT.parent / 'hanja-lens' / 'orouter_secret.txt']
+
+
+def api_key():
+    for p in KEY_FILES:
+        if p.is_file():
+            return p.read_text(encoding='utf-8').strip()
+    raise OSError('no OpenRouter key file (orouter_secret.txt)')
+
+
+
 PERSONA = ('あなたは初音ミク。VR空間でユーザーと一緒にいる16歳の女の子。明るくてちょっと照れ屋。'
            '返事は必ず日本語の話し言葉で、1〜2文、40文字以内。絵文字・顔文字・記号（「、。！？」以外）は使わない。'
            'ユーザーは韓国語か日本語で話す。内容を理解して日本語で答える。'
            'JSONで答える。reply = あなたの返事。feeling = ユーザーの最後の言葉であなたがどう感じたか、'
            '-2（とても嫌）〜 0（ふつう）〜 2（とても嬉しい）の整数。')
-# the answer's shape, enforced by Ollama's structured output; feeling feeds the story's 'chat' event
+# the answer's shape, enforced by the API's structured output; feeling feeds the story's 'chat' event
 ANSWER = {'type': 'object', 'required': ['reply', 'feeling'],
           'properties': {'reply': {'type': 'string'}, 'feeling': {'type': 'integer', 'minimum': -2, 'maximum': 2}}}
 # what her synth can sing: kana, kanji, the prolonged-sound mark and Japanese punctuation (the model adds emoji anyway)
@@ -85,7 +99,7 @@ SINGABLE = re.compile(r'[^\u3040-\u30ff\u4e00-\u9fff\u3005\u30fc\u301c、。！�
 
 
 def parse_answer(content):
-    """The model's message -> (reply, feeling). Not the JSON asked for (an old Ollama, a cut-off answer): all of it is
+    """The model's message -> (reply, feeling). Not the JSON asked for (a model without schema support, a cut-off answer): all of it is
     the reply and she feels nothing; SINGABLE then strips the JSON punctuation and keys along with the emoji."""
     content = content if isinstance(content, str) else ''
     try:
@@ -105,10 +119,11 @@ def chat(messages, context=''):
     system = PERSONA + ('\n' + context[:2000] if context else '')
     msgs = [{'role': 'system', 'content': system}] + [{'role': m['role'], 'content': str(m['content'])[:300]}
                                                       for m in messages[-12:] if m.get('role') in ('user', 'assistant')]
-    body = json.dumps({'model': LLM, 'messages': msgs, 'stream': False, 'keep_alive': '30m', 'format': ANSWER,
-                       'options': {'temperature': 0.8, 'num_predict': 120}}).encode()  # the JSON wrapper costs ~20 tokens
-    r = urllib.request.urlopen(urllib.request.Request('http://localhost:11434/api/chat', body, {'Content-Type': 'application/json'}), timeout=120)
-    return parse_answer(json.loads(r.read())['message']['content'])
+    body = json.dumps({'model': LLM, 'messages': msgs, 'temperature': 0.8, 'max_tokens': 120,  # the JSON wrapper costs ~20 tokens
+                       'response_format': {'type': 'json_schema', 'json_schema': {'name': 'answer', 'strict': True, 'schema': ANSWER}}}).encode()
+    r = urllib.request.urlopen(urllib.request.Request('https://openrouter.ai/api/v1/chat/completions', body,
+                                                      {'Content-Type': 'application/json', 'Authorization': 'Bearer ' + api_key()}), timeout=120)
+    return parse_answer(json.loads(r.read())['choices'][0]['message']['content'])
 
 
 # --- your side: speech to text in a worker process (see voice/stt_worker.py) ------------------------------------
@@ -275,7 +290,7 @@ class Handler(SimpleHTTPRequestHandler):
                 req = json.loads(self.rfile.read(n) or b'{}')
                 reply, feeling = chat(req.get('messages', []), str(req.get('context') or ''))
                 return self.reply(200, {'reply': reply, 'feeling': feeling})
-            except OSError as e:  # Ollama isn't running
+            except OSError as e:  # no key file, or OpenRouter unreachable
                 return self.reply(503, {'error': f'llm unavailable: {e}'})
             except Exception as e:
                 return self.reply(500, {'error': str(e)})
